@@ -133,15 +133,15 @@ Les descriptions des virements sont modifiées par l'anonymisation : les tests g
 
 ## Critères d'acceptation
 
-- [ ] `parser_trade_republic` renvoie les valeurs du tableau ci-dessus sur la fixture de juin, avec les 74 opérations et C1 à C5 au vert.
-- [ ] La fixture de juillet est parsée sans erreur ; ses valeurs clés sont figées dans les tests.
-- [ ] Les bornes de colonnes sont calculées page par page à partir des en-têtes : aucune abscisse codée en dur hors tolérances nommées (constantes `TOLERANCE_*` documentées).
-- [ ] Le cas `€1238,73` est couvert par un test unitaire de normalisation des mots.
-- [ ] Les sections PEA sont ignorées ; un PDF sans relevé « Compte courant » lève `ParseError`.
-- [ ] C1 à C3 détectent une opération manquante (test : suppression d'une bande dans la liste intermédiaire, ou montant altéré), et le contrôle de sens (étape 7 de l'algorithme) détecte une inversion entrée/sortie.
-- [ ] Aucun message d'erreur ne contient de description.
-- [ ] Les tests `donnees_reelles` passent sur `data/raw/2026-06/` et `data/raw/2026-07/` quand ils sont présents.
-- [ ] Vérification complète (ruff, format, mypy, pytest) au vert.
+- [x] `parser_trade_republic` renvoie les valeurs du tableau ci-dessus sur la fixture de juin, avec les 74 opérations et C1 à C5 au vert.
+- [x] La fixture de juillet est parsée sans erreur ; ses valeurs clés sont figées dans les tests.
+- [x] Les bornes de colonnes sont calculées page par page à partir des en-têtes : aucune abscisse codée en dur hors tolérances nommées (constantes `TOLERANCE_*` documentées).
+- [x] Le cas `€1238,73` est couvert par un test unitaire de normalisation des mots.
+- [x] Les sections PEA sont ignorées ; un PDF sans relevé « Compte courant » lève `ParseError`.
+- [x] C1 à C3 détectent une opération manquante (test : suppression d'une bande dans la liste intermédiaire, ou montant altéré), et le contrôle de sens (étape 7 de l'algorithme) détecte une inversion entrée/sortie.
+- [x] Aucun message d'erreur ne contient de description.
+- [x] Les tests `donnees_reelles` passent sur `data/raw/2026-06/` et `data/raw/2026-07/` quand ils sont présents.
+- [x] Vérification complète (ruff, format, mypy, pytest) au vert.
 
 ## Tests attendus
 
@@ -160,4 +160,15 @@ Structurer le code pour que la lecture PDF (`pdfplumber`) soit isolée d'une cou
 
 ## Écarts constatés
 
-_À compléter pendant l'implémentation._
+- **Dépendance** : `pdfplumber` 0.11.10 ajouté (`uv add --system-certs pdfplumber`), avec ses dépendances transitives (`pdfminer-six`, `pypdfium2`, `pillow`…).
+- **Architecture** : `lire_pages` est la seule fonction qui touche à `pdfplumber` ; tout le reste (`decouper_releves`, `reperer_colonnes`, `decouper_bandes`, `affecter_montants`, `controler_releve`…) travaille sur des `Mot` (`text`, `x0`, `x1`, `top`). Les structures intermédiaires (`Page`, `Bande`, `LigneTR`, `SyntheseTR`) sont des dataclasses figées ; seul `ReleveTR` est un modèle Pydantic.
+- **`position`** : rang de l'opération dans le relevé (1 à 74 en juin). Les messages d'erreur citent la page et le rang sur la page, plus le rang global pour les contrôles C1 et C4.
+- **Ordre des contrôles** : C4 (période, puis dates), C5, puis ligne à ligne le contrôle de sens et C1, enfin C2 et C3. La première anomalie arrête tout : contrairement à RG-03, une anomalie de solde se propage aux lignes suivantes, les regrouper n'apporterait que du bruit.
+- **Contrôle de sens** : il reste une `ParseError` comme le prévoit la spec, mais une opération supprimée peut aussi inverser le sens de la variation de solde ; le message cite donc « colonne ENTRÉE/SORTIE mal attribuée ou opération manquante ».
+- **Contrôles de format ajoutés** (`ParseError` avec page et rang) : un seul en-tête `DESCRIPTION` par page, mots du tableau hors d'une transaction, mot non montant dans les colonnes de montants, année absente, colonne TYPE vide, mouvement à plus de `TOLERANCE_MOUVEMENT` de ENTRÉE et de SORTIE, mouvement négatif dans sa colonne, PDF illisible.
+- **Séparateur de milliers** (point ouvert) : traité par anticipation (`_fusionner_milliers`, `TOLERANCE_MILLIERS`) et couvert par un test synthétique ; aucun cas réel observé.
+- **Pages sans tableau** : une page du relevé sans en-tête `DESCRIPTION` (page `REMARQUES`) ne produit aucune opération.
+- **Valeurs de juillet figées** : 01/07 → 31/07/2026, 65 opérations, solde 1 533,57 € → 1 442,72 €, entrées 1 353,61 €, sorties 1 444,46 €. Les mois sont abrégés (`juil.`). Le 2e relevé PEA de juillet a des mouvements (205,15 € / 237,15 €), bien ignorés. Un avoir Amazon en entrée (+39,99 € le 27/07) confirme RG-12.
+- **Descriptions des virements** : l'anonymisation laisse des parenthèses vides (`Incoming transfer from MME ET MR ( )`).
+- **Données réelles** : synthèse, dates, types, montants et soldes identiques aux fixtures en juin et en juillet ; un test `donnees_reelles` le vérifie.
+- **Test « sans compte courant »** : réalisé en remplaçant `lire_pages` par `monkeypatch` (pages PEA seules, ou compte courant en double), sans nouvelle fixture.
