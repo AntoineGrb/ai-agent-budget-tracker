@@ -1,0 +1,54 @@
+[project]
+name = "budget"
+version = "0.1.0"
+description = "Budget Tracker agentique : suivi mensuel des dépenses du foyer"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "pydantic>=2.9,<3",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "rich>=13.7",
+]
+
+[project.scripts]
+budget = "budget.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "types-PyYAML>=6.0",
+    "pymupdf>=1.24",
+]
+
+[build-system]
+requires = ["uv_build>=0.8,<0.13"]
+build-backend = "uv_build"
+
+[tool.mypy]
+strict = true
+plugins = ["pydantic.mypy"]
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["pymupdf", "fitz"]
+ignore_missing_imports = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["donnees_reelles: tests exécutés sur data/raw, ignorés si absent"]

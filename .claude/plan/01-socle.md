@@ -240,17 +240,17 @@ Procédure détaillée dans le skill `fixtures-anonymisees`. Exigences :
 
 ## Critères d'acceptation
 
-- [ ] `uv sync` puis `uv run budget --help` fonctionnent sur un clone vierge.
-- [ ] `parse_montant` et `parse_montant_optionnel` passent tous les cas du tableau ci-dessus.
-- [ ] `parse_date_fr` gère `17/06/2026`, `18/06/26`, `30 juin 2026`, `1 août 2026`, `01 aout 2026`, `12 Décembre 2026`, et rejette `2026-06-17`.
-- [ ] `categories.py` expose 11 catégories et 38 sous-catégories ; chaque sous-catégorie a une catégorie parente valide, une nature et un libellé.
-- [ ] `contexte.example.yaml` passe `budget config verifier` (code 0).
-- [ ] Un YAML avec une clé inconnue, une sous-catégorie inexistante, une carte `1091` sans `X` ou une regex à deux groupes échoue avec un message citant le chemin YAML (code 1).
-- [ ] Les montants YAML sont des `Decimal` exacts (test sur `1787.46` et `15.50`).
-- [ ] `tests/fixtures/2026-06/` et `tests/fixtures/2026-07/` contiennent chacun les trois fichiers anonymisés.
-- [ ] Sur les fixtures de juin, les totaux sont inchangés par rapport aux fichiers réels : 3 116,50 € et 410,67 € nets pour les deux cartes, 10 127,46 € de débits et 12 102,56 € de crédits sur le joint (vérifiés par un test léger, sans attendre les parsers : somme des colonnes CSV).
-- [ ] `test_fixtures_anonymes.py` passe : aucun IBAN français, aucune séquence de 11 chiffres, et, si `data/anonymisation.yaml` est présent localement, aucune des valeurs à remplacer, dans le texte des CSV (décodés en cp1252) et des PDF (texte extrait avec PyMuPDF).
-- [ ] `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy src` et `uv run pytest` passent.
+- [x] `uv sync` puis `uv run budget --help` fonctionnent sur un clone vierge.
+- [x] `parse_montant` et `parse_montant_optionnel` passent tous les cas du tableau ci-dessus.
+- [x] `parse_date_fr` gère `17/06/2026`, `18/06/26`, `30 juin 2026`, `1 août 2026`, `01 aout 2026`, `12 Décembre 2026`, et rejette `2026-06-17`.
+- [x] `categories.py` expose 11 catégories et 38 sous-catégories ; chaque sous-catégorie a une catégorie parente valide, une nature et un libellé.
+- [x] `contexte.example.yaml` passe `budget config verifier` (code 0).
+- [x] Un YAML avec une clé inconnue, une sous-catégorie inexistante, une carte `1091` sans `X` ou une regex à deux groupes échoue avec un message citant le chemin YAML (code 1).
+- [x] Les montants YAML sont des `Decimal` exacts (test sur `1787.46` et `15.50`).
+- [x] `tests/fixtures/2026-06/` et `tests/fixtures/2026-07/` contiennent chacun les trois fichiers anonymisés.
+- [x] Sur les fixtures de juin, les totaux sont inchangés par rapport aux fichiers réels : 3 116,50 € et 410,67 € nets pour les deux cartes, 10 127,46 € de débits et 12 102,56 € de crédits sur le joint (vérifiés par un test léger, sans attendre les parsers : somme des colonnes CSV).
+- [x] `test_fixtures_anonymes.py` passe : aucun IBAN français, aucune séquence de 11 chiffres, et, si `data/anonymisation.yaml` est présent localement, aucune des valeurs à remplacer, dans le texte des CSV (décodés en cp1252) et des PDF (texte extrait avec PyMuPDF).
+- [x] `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy src` et `uv run pytest` passent.
 
 ## Tests attendus
 
@@ -274,4 +274,16 @@ Procédure détaillée dans le skill `fixtures-anonymisees`. Exigences :
 
 ## Écarts constatés
 
-_À compléter pendant l'implémentation._
+- **Emplacements** : le cadrage est dans `docs/cadrage.md` et les specs dans `.claude/plan/` (et non `docs/cadrage/` et `docs/specs/`). Les skills cités (`implementer-spec`, `fixtures-anonymisees`, etc.) n'existent pas encore ; la procédure d'anonymisation est documentée dans la docstring de `scripts/anonymiser.py`.
+- **Données d'entrée** : les extractions étaient déposées dans `fixtures/` à la racine. Elles ont été déplacées dans `data/raw/AAAA-MM/`, et `CA_CPTE_202607.csv` a été renommé `CA_CPTE_JOINT_202607.csv`.
+- **Poste de développement** : uv a été installé avec `pip install --user uv`. Derrière l'inspection TLS du poste, les commandes qui téléchargent (`uv sync`, premier `uv run`) demandent `--system-certs`.
+- **Contradiction « même longueur » / « aucune séquence de 11 chiffres »** (décision utilisateur) : une séquence remplacée de 11 chiffres ou plus est masquée en `X` de même longueur ; plus courte, elle devient une suite de chiffres déterministe dérivée d'une graine secrète (`graine` dans `data/anonymisation.yaml`). Conséquence : les deux numéros de prêt deviennent identiques (`XXXXXXXXXXX`) et se distinguent par leur montant.
+- **Numéros en ligne 2 des libellés du joint** : prêts, contrat, références PayPal, Free, Direct Assurance, Pajemploi et DGFIP y figurent ; la règle « 6 chiffres ou plus en lignes 3 et suivantes » ne les couvrait pas. Les séquences de 10 chiffres ou plus sont donc remplacées partout, ainsi que la ligne 2 réduite à un numéro (chèque, remise).
+- **ICS et garde-fou** : `LU96ZZZ0000000000000000058` contient 22 chiffres consécutifs. Les jetons au format ICS sont exclus du contrôle « 11 chiffres », dans le script comme dans le test.
+- **IBAN fictif** : un IBAN fictif « de même format » serait détecté par le garde-fou. Les IBAN fictifs portent la clé `00` (`FR00…`), impossible pour un IBAN réel, et le test les ignore. Les CSV de juin et juillet ne contiennent d'ailleurs aucun IBAN.
+- **PDF** : les jetons de 11 chiffres ou plus hors ICS sont aussi caviardés (une référence de terminal « INDIGO NE … » en juillet). Le script vérifie qu'aucun mot hors des zones caviardées n'a bougé, et un test `donnees_reelles` compare montants et positions avec les PDF réels.
+- **Mois abrégés** : le relevé TR de juillet écrit `08 juil. 2026`. `parse_date_fr` accepte les abréviations usuelles (`janv.`, `févr.`, `avr.`, `juil.`, `sept.`, `oct.`, `nov.`, `déc.`), nécessaires à la spec 03.
+- **Nombre d'opérations du joint de juin** : 37 (le cadrage §3 indique 38 ; la spec 02 confirme 37).
+- **`ParseError`** : `fichier` et `position` sont des arguments nommés facultatifs, car `parse_montant` et `parse_date_fr` ne connaissent pas le fichier ; les parsers les renseigneront.
+- **Ruff** : ruff 0.16 formate aussi les blocs de code des fichiers Markdown ; `*.md` est exclu (`extend-exclude`) pour protéger les specs.
+- **Revue humaine en attente** : la ligne 2 DGFIP de juillet conserve `1P08700` et `ACI011/260276053` (moins de 10 chiffres) ; à confirmer lors de la relecture du rapport.

@@ -1,0 +1,59 @@
+# contexte.example.yaml : modèle versionné du fichier de contexte du foyer.
+# Copier en data/contexte.yaml (hors git) puis remplacer les marqueurs PRENOM / NOM.
+# Les marqueurs correspondent aux valeurs de remplacement des fixtures anonymisées.
+version: 1
+
+comptes:
+  joint: {banque: credit_agricole, cartes_actives: [X1091, X1481], cartes_inactives: [X9817]}
+  perso: {banque: trade_republic}
+
+salaires:
+  - {nom: salaire_1, libelle_contient: "GROUPAMA GAN VIE VIRT.APTS", montant_approx: 2730}
+  - {nom: salaire_2, libelle_contient: "PLUME", periode_regex: '(\d{2}/\d{4}) NOM2S', montant_approx: 2500}
+fenetre_salaire: {du_jour: 25, au_jour_mois_suivant: 5}  # RG-04
+
+dotations:  # RG-05 : classées sans question
+  - {nom: perso, libelle_contient: "VIR INST vers PRENOM NOM - Mensuel", montant: 500}
+  - {nom: perso_conjoint, libelle_contient: "Virement du mois", montant: 500}
+  - {nom: provision, libelle_contient: "Charges - Charges trim", montant: 300}
+
+provision:  # RG-08
+  reprises_libelle_contient: "Charges trim MONSIEUR NOM"
+  paiements_finances:
+    - {nom: copropriete, ics: FR48ZZZ829660, periodicite: trimestrielle}
+
+charges_fixes:  # RG-18
+  - {nom: pret_principal, type_operation: "Remboursement de prêt", montant: 1787.46, sous_categorie: logement.pret}
+  - {nom: pret_secondaire, type_operation: "Remboursement de prêt", montant: 121.89, sous_categorie: logement.pret}
+  - {nom: assurance_emprunteur, libelle_contient: "ASSU. CAAE PRET HABITAT", montant: 67.48, sous_categorie: logement.assurance_emprunteur}
+  - {nom: assurance_habitation, ics: FR41ZZZ272230, montant: 43.77, sous_categorie: logement.assurance_habitation}
+  - {nom: garde_enfant, ics: FR67ZZZ308137, montant: 668.24, tolerance_pct: 25, sous_categorie: enfants.garde}
+  - {nom: energie, ics: DE56AGR00002197951, montant: 68.92, sous_categorie: abonnements.energie}
+  - {nom: internet, ics: FR83ZZZ459654, montant: 23.99, sous_categorie: abonnements.internet_mobile}
+  - {nom: banque_offre, libelle_contient: "Offre Premium", montant: 15.50, sous_categorie: abonnements.frais_bancaires}
+
+enveloppes:
+  joint_courant: 1200
+  perso: 500
+
+budgets_sous_categories:  # optionnel, par mois
+  courses.supermarche: null
+  restos.livraison: null
+  loisirs.sorties: null
+
+depenses_annuelles_connues:
+  - {nom: cotisation_carte, mois: 6, montant: 144, sous_categorie: abonnements.frais_bancaires}
+  - {nom: taxe_fonciere, mois: null, montant: null, sous_categorie: impots.taxe_fonciere}
+  - {nom: vacances_ete, mois: [7, 8], montant: null, sous_categorie: loisirs.voyages}
+
+mois_particuliers:
+  - {mois: 11, sens: revenu, motif: "13e mois", montant_approx: null}
+
+seuils:
+  exceptionnel: 500           # RG-15
+  amazon_auto: 50             # RG-13
+  ecart_charge_fixe_pct: 10   # RG-18, sauf tolérance propre à la charge
+
+llm:
+  modele_categorisation: "anthropic:claude-haiku-4-5"
+  modele_synthese: "anthropic:claude-sonnet-5"

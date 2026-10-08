@@ -223,16 +223,16 @@ Aucune nouvelle dépendance : bibliothèque standard (`csv`, `re`, `pathlib`) et
 
 ## Critères d'acceptation
 
-- [ ] `parser_ca_cartes` et `parser_ca_joint` renvoient les valeurs du tableau ci-dessus sur les fixtures de juin.
-- [ ] Les fixtures de juillet sont parsées sans erreur et RG-03 passe ; leurs valeurs clés sont figées dans les tests.
-- [ ] Chaque libellé multi-ligne du joint est restitué entier dans `libelle_brut` (test sur un prélèvement à 6 lignes).
-- [ ] Le contrôle interne du fichier cartes détecte une ligne supprimée (test sur une copie modifiée en mémoire).
-- [ ] RG-03 détecte chacun des quatre cas d'échec : mois différent, carte manquante d'un côté, écart de montant d'un centime, opération postérieure à la date d'arrêté.
-- [ ] Un fichier joint dont la période n'est pas un mois civil complet lève `ParseError`.
-- [ ] Une ligne à deux montants, ou sans montant, lève `ParseError` avec son numéro de ligne.
-- [ ] Aucun message d'erreur ne contient de libellé complet (position, date et montant uniquement).
-- [ ] Les tests `donnees_reelles` passent sur `data/raw/2026-06/` et `data/raw/2026-07/` quand ils sont présents.
-- [ ] Vérification complète (ruff, format, mypy, pytest) au vert.
+- [x] `parser_ca_cartes` et `parser_ca_joint` renvoient les valeurs du tableau ci-dessus sur les fixtures de juin.
+- [x] Les fixtures de juillet sont parsées sans erreur et RG-03 passe ; leurs valeurs clés sont figées dans les tests.
+- [x] Chaque libellé multi-ligne du joint est restitué entier dans `libelle_brut` (test sur un prélèvement à 6 lignes).
+- [x] Le contrôle interne du fichier cartes détecte une ligne supprimée (test sur une copie modifiée en mémoire).
+- [x] RG-03 détecte chacun des quatre cas d'échec : mois différent, carte manquante d'un côté, écart de montant d'un centime, opération postérieure à la date d'arrêté.
+- [x] Un fichier joint dont la période n'est pas un mois civil complet lève `ParseError`.
+- [x] Une ligne à deux montants, ou sans montant, lève `ParseError` avec son numéro de ligne.
+- [x] Aucun message d'erreur ne contient de libellé complet (position, date et montant uniquement).
+- [x] Les tests `donnees_reelles` passent sur `data/raw/2026-06/` et `data/raw/2026-07/` quand ils sont présents.
+- [x] Vérification complète (ruff, format, mypy, pytest) au vert.
 
 ## Tests attendus
 
@@ -251,4 +251,11 @@ Les cas d'échec sont construits en mémoire à partir des fixtures (texte modif
 
 ## Écarts constatés
 
-_À compléter pendant l'implémentation._
+- **Emplacements** : comme à l'étape 1, la spec est dans `.claude/plan/` et le skill `parser-releve-bancaire` n'existe pas encore. Les modèles `ReleveCarte`, `ReleveCartes`, `LigneDebitDiffere` et `ReleveJoint` sont dans `parsers/credit_agricole.py` (propres au Crédit Agricole), et non dans `models.py`.
+- **Encours** : `encours` vaut l'opposé du montant de l'en-tête (`-(-3 116.50)`) plutôt que sa valeur absolue. Le résultat est identique sur les données observées, mais un encours créditeur garderait son signe au lieu d'être masqué par `abs`.
+- **`position`** : numéro de la ligne physique du fichier ; pour le joint, première ligne de l'enregistrement multi-ligne (1re opération de juin : ligne 19).
+- **Contrôles de format ajoutés** (tous en `ParseError` avec numéro de ligne) : ligne non vide et non datée dans la zone de données d'une carte, cellule renseignée au-delà de la 4e colonne, montant nul ou négatif dans sa colonne, en-tête de colonnes avant la ligne « Encours débité » (cartes) ou avant la ligne de période (joint).
+- **RG-03** : les anomalies d'une même phase (mois, appariement, puis montants et cycle) sont réunies dans une seule `ControleError`, une ligne par anomalie, pour tout corriger en un passage.
+- **Valeurs de juillet figées** : cartes `X1091` 65 opérations (débits 3 930,43 €, crédits 909,30 €, encours 3 021,13 €) et `X1481` 21 opérations (527,25 €), débit le 31/07/2026, arrêté au 16/07/2026 ; joint 28 opérations, débits 12 454,27 €, crédits 9 859,58 €, 7 ICS (nouveau : `FR64ZZZ395200`). Deux types absents de juin : `Retrait au distributeur` (2) et `Chèque emis` (1). Aucune carte extraite hors débits différés (la cotisation de juillet ne cite pas de carte).
+- **Données réelles** : le parsing de `data/raw/2026-06` et `2026-07` est identique à celui des fixtures (dates, montants, types, ICS, cartes, positions) ; un test `donnees_reelles` le vérifie.
+- **Tests** : l'utilitaire `ecrire_variante` de `tests/conftest.py` construit les cas d'échec à partir des fixtures dans `tmp_path`, en conservant les fins de ligne (lecture et écriture en octets cp1252).

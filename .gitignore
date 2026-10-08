@@ -1,1 +1,12 @@
-fixtures/
+# Données réelles et secrets : jamais dans git
+data/
+.env
+*.sqlite
+*.sqlite3
+
+# Outillage Python
+.venv/
+__pycache__/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
