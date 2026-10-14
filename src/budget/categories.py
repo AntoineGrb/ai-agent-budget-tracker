@@ -147,3 +147,8 @@ def nature_de(sc: SousCategorie) -> NatureDepense:
 def libelle_de(sc: SousCategorie) -> str:
     """Libellé d'affichage de la sous-catégorie."""
     return _METADONNEES[sc][1]
+
+
+def libelle_complet(sc: SousCategorie) -> str:
+    """`Achats › Maison & déco`."""
+    return f"{categorie_de(sc).libelle} › {libelle_de(sc)}"

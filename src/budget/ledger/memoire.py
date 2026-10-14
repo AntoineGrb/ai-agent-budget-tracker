@@ -1,15 +1,18 @@
-"""Lecture et écriture des questions, règles apprises et décisions (spec 06).
+"""Lecture et écriture des questions, règles, décisions, propositions et tags (specs 06, 07).
 
 Chaque réponse est écrite immédiatement, dans sa propre transaction SQL : quitter le dialogue en
 cours de route ne perd rien.
 """
 
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 
+from pydantic import BaseModel, ConfigDict
+
 from budget.categories import SousCategorie
-from budget.errors import ControleError
+from budget.errors import ControleError, RegleError
+from budget.horloge import horodatage
 from budget.models import Nature, Source
 from budget.montants import depuis_centimes, en_centimes
 from budget.questions.modeles import Question
@@ -27,6 +30,8 @@ _COLONNES_REGLE = (
     "sous_categorie",
     "detail",
     "active",
+    "creee_le",
+    "desactivee_le",
 )
 _COLONNES_DECISION = (
     "transaction_id",
@@ -38,10 +43,6 @@ _COLONNES_DECISION = (
     "mois_paie",
     "regle_id",
 )
-
-
-def horodatage() -> str:
-    return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
 def _centimes(valeur: object) -> int | None:
@@ -67,7 +68,17 @@ def _regle_depuis_ligne(ligne: Sequence[object]) -> Regle:
         sous_categorie=SousCategorie(str(v["sous_categorie"])) if v["sous_categorie"] else None,
         detail=str(v["detail"]) if v["detail"] is not None else None,
         active=bool(v["active"]),
+        creee_le=_instant(v["creee_le"]),
+        desactivee_le=_instant(v["desactivee_le"]),
     )
+
+
+def _instant(valeur: object) -> datetime | None:
+    return datetime.fromisoformat(str(valeur)) if valeur is not None else None
+
+
+def _sous_categorie(valeur: object) -> SousCategorie | None:
+    return SousCategorie(str(valeur)) if valeur is not None else None
 
 
 def lire_regles(connexion: sqlite3.Connection) -> list[Regle]:
@@ -178,3 +189,194 @@ def enregistrer_reponse(
         ),
     )
     return creee
+
+
+# Règles : désactivation et usage (spec 07) ---------------------------------------------------
+
+
+def desactiver_regle(connexion: sqlite3.Connection, numero: int) -> Regle:
+    """Désactive une règle active ; `RegleError` si elle est inconnue ou déjà inactive."""
+    regle = lire_regles_par_id(connexion).get(numero)
+    if regle is None:
+        raise RegleError(f"règle n° {numero} inconnue (voir `budget rules list --toutes`)")
+    if not regle.active:
+        raise RegleError(f"règle n° {numero} déjà désactivée")
+    connexion.execute(
+        "UPDATE regles SET active = 0, desactivee_le = ? WHERE id = ?", (horodatage(), numero)
+    )
+    return lire_regles_par_id(connexion)[numero]
+
+
+def lire_regles_par_id(connexion: sqlite3.Connection) -> dict[int, Regle]:
+    return {r.id: r for r in lire_regles(connexion) if r.id is not None}
+
+
+def operations_par_regle(connexion: sqlite3.Connection) -> dict[int, int]:
+    """Nombre d'opérations classées par chaque règle, tous mois confondus."""
+    requete = (
+        "SELECT regle_id, COUNT(*) FROM classements WHERE regle_id IS NOT NULL GROUP BY regle_id"
+    )
+    return {int(r): int(n) for r, n in connexion.execute(requete)}
+
+
+def mois_de_regle(connexion: sqlite3.Connection, numero: int) -> list[str]:
+    requete = (
+        "SELECT DISTINCT mois_budgetaire FROM classements WHERE regle_id = ? "
+        "ORDER BY mois_budgetaire"
+    )
+    return [str(m) for (m,) in connexion.execute(requete, (numero,))]
+
+
+# Propositions du catégoriseur (spec 07) -------------------------------------------------------
+
+
+class PropositionEnregistree(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: int
+    mois: str
+    source: Source
+    cle_marchand: str
+    proposee: SousCategorie | None
+    modele: str | None
+    corrigee: SousCategorie | None
+    regle_id: int | None
+    proposee_le: datetime
+    validee_le: datetime | None
+
+    @property
+    def retenue(self) -> SousCategorie | None:
+        """La correction de l'utilisateur prime sur la proposition."""
+        return self.corrigee or self.proposee
+
+
+_COLONNES_PROPOSITION = (
+    "id",
+    "mois",
+    "source",
+    "cle_marchand",
+    "sous_categorie_proposee",
+    "modele",
+    "sous_categorie_corrigee",
+    "regle_id",
+    "proposee_le",
+    "validee_le",
+)
+
+
+def _proposition_depuis_ligne(ligne: Sequence[object]) -> PropositionEnregistree:
+    v = dict(zip(_COLONNES_PROPOSITION, ligne, strict=True))
+    return PropositionEnregistree(
+        id=int(str(v["id"])),
+        mois=str(v["mois"]),
+        source=Source(str(v["source"])),
+        cle_marchand=str(v["cle_marchand"]),
+        proposee=_sous_categorie(v["sous_categorie_proposee"]),
+        modele=str(v["modele"]) if v["modele"] is not None else None,
+        corrigee=_sous_categorie(v["sous_categorie_corrigee"]),
+        regle_id=int(str(v["regle_id"])) if v["regle_id"] is not None else None,
+        proposee_le=datetime.fromisoformat(str(v["proposee_le"])),
+        validee_le=_instant(v["validee_le"]),
+    )
+
+
+def lire_propositions(
+    connexion: sqlite3.Connection, *, en_attente: bool = False
+) -> list[PropositionEnregistree]:
+    filtre = "WHERE validee_le IS NULL " if en_attente else ""
+    requete = f"SELECT {', '.join(_COLONNES_PROPOSITION)} FROM propositions {filtre}ORDER BY id"
+    return [_proposition_depuis_ligne(ligne) for ligne in connexion.execute(requete)]
+
+
+def propositions_en_attente(
+    connexion: sqlite3.Connection,
+) -> dict[tuple[Source, str], PropositionEnregistree]:
+    """Au plus une proposition en attente par `(source, cle_marchand)`."""
+    attente: dict[tuple[Source, str], PropositionEnregistree] = {}
+    for proposition in lire_propositions(connexion, en_attente=True):
+        cle = (proposition.source, proposition.cle_marchand)
+        if cle in attente:
+            raise ControleError(
+                f"propositions n° {attente[cle].id} et n° {proposition.id} en attente pour le "
+                f"même marchand ({proposition.source})"
+            )
+        attente[cle] = proposition
+    return attente
+
+
+def enregistrer_propositions(
+    connexion: sqlite3.Connection,
+    mois: str,
+    propositions: Mapping[tuple[Source, str], SousCategorie],
+    modele: str | None,
+) -> None:
+    """Propositions reçues, enregistrées avant le dialogue ; une attente existante est gardée."""
+    attente = propositions_en_attente(connexion)
+    instant = horodatage()
+    for (source, cle), sous_categorie in propositions.items():
+        existante = attente.get((source, cle))
+        if existante is not None and existante.retenue is not None:
+            continue
+        if existante is not None:
+            connexion.execute(
+                "UPDATE propositions SET sous_categorie_proposee = ?, modele = ? WHERE id = ?",
+                (sous_categorie.value, modele, existante.id),
+            )
+            continue
+        connexion.execute(
+            "INSERT INTO propositions (mois, source, cle_marchand, sous_categorie_proposee, "
+            "modele, proposee_le) VALUES (?, ?, ?, ?, ?, ?)",
+            (mois, source.value, cle, sous_categorie.value, modele, instant),
+        )
+
+
+def corriger_proposition(
+    connexion: sqlite3.Connection,
+    mois: str,
+    source: Source,
+    cle: str,
+    sous_categorie: SousCategorie,
+) -> None:
+    """Correction saisie dans le tableau : elle prime sur la proposition et survit à un `q`."""
+    existante = propositions_en_attente(connexion).get((source, cle))
+    if existante is not None:
+        connexion.execute(
+            "UPDATE propositions SET sous_categorie_corrigee = ? WHERE id = ?",
+            (sous_categorie.value, existante.id),
+        )
+        return
+    connexion.execute(
+        "INSERT INTO propositions (mois, source, cle_marchand, sous_categorie_corrigee, "
+        "proposee_le) VALUES (?, ?, ?, ?, ?)",
+        (mois, source.value, cle, sous_categorie.value, horodatage()),
+    )
+
+
+def valider_proposition(connexion: sqlite3.Connection, regle: Regle) -> Regle:
+    """Crée la règle marchand et marque validée la proposition en attente du même marchand."""
+    existante = propositions_en_attente(connexion).get((regle.source, regle.valeur))
+    if existante is None or existante.retenue is None:
+        raise ControleError(f"aucune proposition en attente pour ce marchand ({regle.source})")
+    creee = inserer_regle(connexion, regle)
+    connexion.execute(
+        "UPDATE propositions SET regle_id = ?, validee_le = ? WHERE id = ?",
+        (creee.id, horodatage(), existante.id),
+    )
+    return creee
+
+
+# Tags exceptionnels (RG-15) --------------------------------------------------------------------
+
+
+def lire_exceptionnels(connexion: sqlite3.Connection) -> dict[str, bool]:
+    requete = "SELECT transaction_id, exceptionnel FROM exceptionnels"
+    return {str(t): bool(e) for t, e in connexion.execute(requete)}
+
+
+def enregistrer_exceptionnel(
+    connexion: sqlite3.Connection, transaction_id: str, exceptionnel: bool
+) -> None:
+    connexion.execute(
+        "INSERT INTO exceptionnels (transaction_id, exceptionnel, decide_le) VALUES (?, ?, ?)",
+        (transaction_id, int(exceptionnel), horodatage()),
+    )

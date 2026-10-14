@@ -12,7 +12,10 @@ Chaque transaction reçoit le premier classement applicable, dans l'ordre :
 8. paiement carte (RG-09, RG-12) ;
 9. contrepartie d'une dotation, par appariement des virements internes ;
 10. décision enregistrée pour la transaction (spec 06) ;
-11. règle apprise la plus spécifique, sauf RG-14 (spec 06).
+11. règle apprise la plus spécifique, sauf RG-14 (spec 06) ;
+12. sous-catégorie des paiements carte : décision RG-13, RG-13, règle marchand (spec 07).
+
+Enfin, une réponse « oui » à un tag exceptionnel marque le classement (RG-15).
 
 Le reste est non classé et produit une question (spec 06). Pour une paire de virements internes,
 décisions et règles portent sur le côté joint et s'appliquent aux deux côtés.
@@ -20,6 +23,7 @@ décisions et règles portent sur le côté joint et s'appliquent aux deux côt�
 
 from collections.abc import Sequence
 
+from budget.classement.cartes import est_paiement_carte, sous_categoriser_cartes
 from budget.classement.contexte import (
     affecter_charges_fixes,
     alertes_cartes,
@@ -32,7 +36,7 @@ from budget.classement.contexte import (
     classer_salaire,
 )
 from budget.classement.modeles import Alerte, Classement, OrigineClassement, ResultatClassement
-from budget.classement.trade_republic import TYPE_AVOIR, classer_trade_republic, type_tr
+from budget.classement.trade_republic import classer_trade_republic
 from budget.classement.virements_internes import apparier_virements_internes
 from budget.config import Contexte
 from budget.errors import ControleError
@@ -54,13 +58,6 @@ def neutraliser_debit_differe(transaction: Transaction) -> Classement | None:
     ):
         return Classement.pour(transaction, Nature.NEUTRALISE, _REGLE_FIXE, "RG-03")
     return None
-
-
-def est_paiement_carte(transaction: Transaction) -> bool:
-    """Opération du fichier cartes, ou `Avoir` Trade Republic (RG-12)."""
-    return transaction.source is Source.CA_CB or (
-        transaction.source is Source.TR and type_tr(transaction) == TYPE_AVOIR
-    )
 
 
 def classer_paiement_carte(transaction: Transaction) -> Classement | None:
@@ -103,6 +100,7 @@ def _depuis_regle(
         origine=OrigineClassement.REGLE,
         detail=f"{detail}:contrepartie" if contrepartie else detail,
         contrepartie_id=base.contrepartie_id if base is not None else None,
+        regle_id=regle.id,
     )
 
 
@@ -199,7 +197,14 @@ def classer_mois(
             cote_tr = classes.get(tr.id) or Classement.non_classee(tr)
         classes[tr.id] = cote_tr.model_copy(update={"contrepartie_id": joint.id})
 
-    appliquer_memoire(transactions, classes, memoire or Memoire())
+    memoire = memoire or Memoire()
+    appliquer_memoire(transactions, classes, memoire)
+    sous_categoriser_cartes(transactions, classes, memoire, contexte.seuils.amazon_auto)
+    for transaction_id, exceptionnel in memoire.exceptionnels.items():  # RG-15
+        if exceptionnel and transaction_id in classes:
+            classes[transaction_id] = classes[transaction_id].model_copy(
+                update={"exceptionnel": True}
+            )
 
     alertes.extend(alertes_salaires(transactions, classes, contexte))  # RG-04
     alertes.extend(alertes_dotations(transactions, classes, contexte))  # RG-05

@@ -10,6 +10,7 @@ dependencies = [
     "typer>=0.12",
     "rich>=13.7",
     "pdfplumber>=0.11.10",
+    "pydantic-ai-slim[anthropic]>=2,<3",
 ]
 
 [project.scripts]
@@ -53,3 +54,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["donnees_reelles: tests exécutés sur data/raw, ignorés si absent"]
+filterwarnings = [
+    # pydantic_graph (run_sync) appelle asyncio.get_event_loop() hors boucle : sans effet
+    "ignore:There is no current event loop:DeprecationWarning:pydantic_graph",
+]

@@ -1,5 +1,13 @@
 """Exceptions du projet : toutes héritent de `BudgetError`."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from budget.categories import SousCategorie
+    from budget.models import Source
+
 
 class BudgetError(Exception):
     """Erreur métier du Budget Tracker."""
@@ -47,3 +55,14 @@ class LedgerError(BudgetError):
 
 class RegleError(BudgetError):
     """Règle apprise invalide ou en conflit avec une règle existante."""
+
+
+class CategorisationError(BudgetError):
+    """Catégoriseur indisponible ou en échec : le classement continue sans proposition."""
+
+    def __init__(
+        self, raison: str, partielles: dict[tuple[Source, str], SousCategorie] | None = None
+    ) -> None:
+        super().__init__(raison)
+        self.raison = raison
+        self.partielles = partielles or {}

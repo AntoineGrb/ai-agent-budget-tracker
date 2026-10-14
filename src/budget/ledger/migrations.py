@@ -152,6 +152,36 @@ CREATE TABLE decisions (
 );
 """,
     ),
+    Migration(
+        numero=4,
+        description="propositions du catégoriseur, tags exceptionnels, règle appliquée",
+        sql="""
+ALTER TABLE regles ADD COLUMN desactivee_le TEXT;
+
+ALTER TABLE classements ADD COLUMN regle_id INTEGER REFERENCES regles (id);
+
+CREATE TABLE propositions (
+    id                       INTEGER PRIMARY KEY,
+    mois                     TEXT NOT NULL,
+    source                   TEXT NOT NULL CHECK (source IN ('ca_cb', 'tr')),
+    cle_marchand             TEXT NOT NULL,
+    sous_categorie_proposee  TEXT,           -- NULL : aucune proposition (mode dégradé)
+    modele                   TEXT,           -- ex. anthropic:claude-haiku-4-5
+    sous_categorie_corrigee  TEXT,           -- saisie de l'utilisateur, prime sur la proposition
+    regle_id                 INTEGER REFERENCES regles (id),
+    proposee_le              TEXT NOT NULL,
+    validee_le               TEXT
+);
+
+CREATE INDEX propositions_cle ON propositions (source, cle_marchand);
+
+CREATE TABLE exceptionnels (
+    transaction_id  TEXT PRIMARY KEY REFERENCES transactions (id),
+    exceptionnel    INTEGER NOT NULL CHECK (exceptionnel IN (0, 1)),
+    decide_le       TEXT NOT NULL
+);
+""",
+    ),
 )
 
 VERSION_COURANTE = MIGRATIONS[-1].numero

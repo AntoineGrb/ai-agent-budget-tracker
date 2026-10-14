@@ -3,6 +3,7 @@
 Le terminal est local : le libellé y est affiché, mais jamais journalisé.
 """
 
+import io
 import logging
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
@@ -108,8 +109,11 @@ class InterlocuteurScripte:
         return self._suivante(invite)
 
     def texte(self) -> str:
-        """Tout ce qui a été affiché, en texte brut."""
-        return "\n".join(str(a) for a in self.affichages)
+        """Tout ce qui a été affiché, rendu en texte brut (tableaux compris)."""
+        console = Console(width=200, record=True, file=io.StringIO())
+        for affichage in self.affichages:
+            console.print(affichage, markup=False, highlight=False)
+        return console.export_text()
 
 
 @dataclass
@@ -159,27 +163,59 @@ def choix_de_nature(question: Question) -> tuple[tuple[str, Nature], ...]:
     return _CHOIX_OPERATION_SORTIE if sortie else _CHOIX_OPERATION_ENTREE
 
 
-def _menu(options: Sequence[str], suffixes: Sequence[tuple[str, str]], par_ligne: int = 3) -> Text:
+def menu(options: Sequence[str], suffixes: Sequence[tuple[str, str]], par_ligne: int = 3) -> Text:
     elements = [f"{i}. {libelle}" for i, libelle in enumerate(options, 1)]
     elements += [f"{cle}. {libelle}" for cle, libelle in suffixes]
     lignes = [elements[i : i + par_ligne] for i in range(0, len(elements), par_ligne)]
     return Text("\n".join("  " + "".join(e.ljust(24) for e in ligne).rstrip() for ligne in lignes))
 
 
-def _signe(montant: Decimal) -> str:
+def montant_signe(montant: Decimal) -> str:
     texte = formater_montant(montant)
     return f"+{texte}" if montant > 0 else texte
 
 
-def _compte(transaction: Transaction) -> str:
+def nom_compte(transaction: Transaction) -> str:
     return "Perso" if transaction.source is Source.TR else "Joint"
 
 
 def _ligne(transaction: Transaction, suffixe: str = "") -> str:
     return (
-        f"  {_compte(transaction)} · {transaction.date_operation:%d/%m/%Y} · "
-        f"{_signe(transaction.montant)} · {transaction.type_operation or ''}{suffixe}"
+        f"  {nom_compte(transaction)} · {transaction.date_operation:%d/%m/%Y} · "
+        f"{montant_signe(transaction.montant)} · {transaction.type_operation or ''}{suffixe}"
     )
+
+
+def choisir(
+    interlocuteur: Interlocuteur, options: Sequence[str], suffixes: Sequence[tuple[str, str]]
+) -> str:
+    """Menu numéroté ; `q` lève `Abandon`."""
+    interlocuteur.afficher(menu(options, suffixes))
+    valides = [str(i) for i in range(1, len(options) + 1)] + [cle for cle, _ in suffixes]
+    choix = interlocuteur.demander(">", valides)
+    if choix == QUITTER:
+        raise Abandon
+    return choix
+
+
+def choisir_sous_categorie(interlocuteur: Interlocuteur) -> SousCategorie | None:
+    """Catégorie puis sous-catégorie, construits depuis `categories.py` ; `None` = annulé."""
+    categories = list(Categorie)
+    while True:
+        interlocuteur.afficher(Text("  Catégorie ?"))
+        choix = choisir(interlocuteur, [c.libelle for c in categories], ((ANNULER, "Annuler"),))
+        if choix == ANNULER:
+            return None
+        categorie = categories[int(choix) - 1]
+        sous_categories = [sc for sc in SousCategorie if categorie_de(sc) is categorie]
+        interlocuteur.afficher(Text(f"  Sous-catégorie de {categorie.libelle} ?"))
+        choix = choisir(
+            interlocuteur,
+            [libelle_de(sc) for sc in sous_categories],
+            ((ANNULER, "Retour aux catégories"),),
+        )
+        if choix != ANNULER:
+            return sous_categories[int(choix) - 1]
 
 
 _TITRES = {
@@ -241,7 +277,7 @@ class Dialogue:
         if question.type is TypeQuestion.SALAIRE:
             fenetre = self.contexte.fenetre_salaire
             lignes += [
-                f"  {_compte(t)} · {t.date_operation:%d/%m/%Y} · {_signe(t.montant)} · "
+                f"  {nom_compte(t)} · {t.date_operation:%d/%m/%Y} · {montant_signe(t.montant)} · "
                 f"{question.nom_salaire}",
                 f"  Reçu hors de la fenêtre du {fenetre.du_jour} au "
                 f"{fenetre.au_jour_mois_suivant}, sans période dans le libellé.",
@@ -254,12 +290,7 @@ class Dialogue:
         self.interlocuteur.afficher(Text("\n".join(lignes)))
 
     def _choisir(self, options: Sequence[str], suffixes: Sequence[tuple[str, str]]) -> str:
-        self.interlocuteur.afficher(_menu(options, suffixes))
-        valides = [str(i) for i in range(1, len(options) + 1)] + [cle for cle, _ in suffixes]
-        choix = self.interlocuteur.demander(">", valides)
-        if choix == QUITTER:
-            raise Abandon
-        return choix
+        return choisir(self.interlocuteur, options, suffixes)
 
     # Réponse -----------------------------------------------------------------------------------
 
@@ -303,20 +334,7 @@ class Dialogue:
         return Reponse(nature=nature)
 
     def _choisir_sous_categorie(self) -> SousCategorie | None:
-        categories = list(Categorie)
-        while True:
-            self.interlocuteur.afficher(Text("  Catégorie ?"))
-            choix = self._choisir([c.libelle for c in categories], ((ANNULER, "Annuler"),))
-            if choix == ANNULER:
-                return None
-            categorie = categories[int(choix) - 1]
-            sous_categories = [sc for sc in SousCategorie if categorie_de(sc) is categorie]
-            self.interlocuteur.afficher(Text(f"  Sous-catégorie de {categorie.libelle} ?"))
-            choix = self._choisir(
-                [libelle_de(sc) for sc in sous_categories], ((ANNULER, "Retour aux catégories"),)
-            )
-            if choix != ANNULER:
-                return sous_categories[int(choix) - 1]
+        return choisir_sous_categorie(self.interlocuteur)
 
     def _choisir_depense(self, question: Question) -> str | None:
         """RG-07 : dépense liée parmi les candidates, 10 par page ; `None` = annulé."""
@@ -328,7 +346,8 @@ class Dialogue:
         while True:
             affichees = page(candidats, numero_page)
             options = [
-                f"{_compte(t)} · {t.date_operation:%d/%m/%Y} · {_signe(t.montant)} · {t.libelle}"
+                f"{nom_compte(t)} · {t.date_operation:%d/%m/%Y} · "
+                f"{montant_signe(t.montant)} · {t.libelle}"
                 for t in affichees
             ]
             self.interlocuteur.afficher(Text("  Dépense liée ?"))
@@ -338,7 +357,7 @@ class Dialogue:
             suffixes = [(ANNULER, "Annuler")]
             if page(candidats, numero_page + 1):
                 suffixes.insert(0, (PAGE_SUIVANTE, "Page suivante"))
-            self.interlocuteur.afficher(_menu([], suffixes))
+            self.interlocuteur.afficher(menu([], suffixes))
             valides = [str(i) for i in range(1, len(affichees) + 1)] + [c for c, _ in suffixes]
             choix = self.interlocuteur.demander(">", valides)
             if choix == ANNULER:

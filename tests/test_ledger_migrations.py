@@ -20,6 +20,7 @@ TABLES_V2 = TABLES_V1 | {
     "charges_fixes_transactions",
 }
 TABLES_V3 = TABLES_V2 | {"questions", "regles", "decisions"}
+TABLES_V4 = TABLES_V3 | {"propositions", "exceptionnels"}
 
 
 def _tables(chemin: Path) -> set[str]:
@@ -31,9 +32,9 @@ def _tables(chemin: Path) -> set[str]:
 def test_base_neuve_en_version_courante(tmp_path: Path) -> None:
     chemin = tmp_path / "sous_dossier" / "budget.sqlite"
     with Ledger(chemin) as ledger:
-        assert ledger.version == 3 == VERSION_COURANTE
+        assert ledger.version == 4 == VERSION_COURANTE
         assert ledger.mois_importes() == []
-    assert _tables(chemin) == TABLES_V3
+    assert _tables(chemin) == TABLES_V4
     assert [m.numero for m in MIGRATIONS] == list(range(1, len(MIGRATIONS) + 1))
 
 
@@ -46,7 +47,7 @@ def test_reouverture_n_applique_rien(tmp_path: Path) -> None:
     finally:
         connexion.close()
     with Ledger(chemin) as ledger:
-        assert ledger.version == 3
+        assert ledger.version == 4
 
 
 def test_version_inconnue(tmp_path: Path) -> None:
@@ -54,7 +55,7 @@ def test_version_inconnue(tmp_path: Path) -> None:
     connexion = sqlite3.connect(chemin)
     connexion.execute("PRAGMA user_version = 99")
     connexion.close()
-    with pytest.raises(LedgerError, match="schéma en version 99, .* jusqu'à 3"):
+    with pytest.raises(LedgerError, match="schéma en version 99, .* jusqu'à 4"):
         Ledger(chemin)
 
 
@@ -69,14 +70,14 @@ def test_migration_en_echec_annulee(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     from budget.ledger import migrations
 
     fautive = migrations.Migration(
-        4, "fautive", "CREATE TABLE t (x INTEGER); SELECT * FROM absente"
+        5, "fautive", "CREATE TABLE t (x INTEGER); SELECT * FROM absente"
     )
     monkeypatch.setattr(migrations, "MIGRATIONS", (*MIGRATIONS, fautive))
-    monkeypatch.setattr(migrations, "VERSION_COURANTE", 4)
+    monkeypatch.setattr(migrations, "VERSION_COURANTE", 5)
     chemin = tmp_path / "budget.sqlite"
-    with pytest.raises(LedgerError, match="échec de la migration 0004"):
+    with pytest.raises(LedgerError, match="échec de la migration 0005"):
         Ledger(chemin)
-    assert _tables(chemin) == TABLES_V3  # 0001 à 0003 conservées, 0004 annulée
+    assert _tables(chemin) == TABLES_V4  # 0001 à 0004 conservées, 0005 annulée
 
 
 def test_migration_0002_sur_base_v1_avec_transactions(
@@ -98,17 +99,12 @@ def test_migration_0002_sur_base_v1_avec_transactions(
         assert ledger.version == VERSION_COURANTE
         assert len(ledger.transactions("2026-06")) == 159
         assert ledger.classements("2026-06") == []
-    assert _tables(chemin) == TABLES_V3
+    assert _tables(chemin) == TABLES_V4
 
 
-def test_migration_0003_sur_base_v2_classee(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Migration 0003 appliquée à une base en version 2 qui contient un mois importé et classé."""
-    from budget.classement import classer_mois
-    from budget.config import charger_contexte
+def test_migration_0003_sur_base_v2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Migrations 0003 et 0004 appliquées à une base en version 2 qui contient un mois importé."""
     from budget.ledger import migrations
-    from tests.conftest import EXEMPLE_CONTEXTE
 
     chemin = tmp_path / "budget.sqlite"
     with monkeypatch.context() as patch:
@@ -116,14 +112,54 @@ def test_migration_0003_sur_base_v2_classee(
         patch.setattr(migrations, "VERSION_COURANTE", 2)
         with Ledger(chemin) as ledger:
             importer_mois("2026-06", DOSSIER_FIXTURES, ledger, date(2026, 10, 8))
-            transactions = ledger.transactions("2026-06")
-            resultat = classer_mois("2026-06", transactions, charger_contexte(EXEMPLE_CONTEXTE))
-            ledger.enregistrer_classement("2026-06", resultat)
             assert ledger.version == 2
     assert _tables(chemin) == TABLES_V2
 
     with Ledger(chemin) as ledger:
-        assert ledger.version == 3
-        assert ledger.classements("2026-06") == list(resultat.classements)
+        assert ledger.version == VERSION_COURANTE
+        assert len(ledger.transactions("2026-06")) == 159
         assert ledger.regles() == [] and ledger.decisions() == {}
+    assert _tables(chemin) == TABLES_V4
+
+
+def test_migration_0004_sur_base_v3_avec_regles_et_decisions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Migration 0004 sur une base en version 3 contenant une question, une règle, une décision."""
+    from budget.ledger import migrations
+
+    chemin = tmp_path / "budget.sqlite"
+    with monkeypatch.context() as patch:
+        patch.setattr(migrations, "MIGRATIONS", MIGRATIONS[:3])
+        patch.setattr(migrations, "VERSION_COURANTE", 3)
+        with Ledger(chemin) as ledger:
+            importer_mois("2026-06", DOSSIER_FIXTURES, ledger, date(2026, 10, 8))
+            transaction = ledger.transactions("2026-06")[0]
+    # Écriture au format de la version 3 : colonnes connues de ce schéma seulement
+    with sqlite3.connect(chemin) as connexion:
+        connexion.execute(
+            "INSERT INTO questions (id, transaction_id, type, motif, posee_le, repondue_le) "
+            "VALUES (1, ?, 'operation', 'non_classe', '2026-10-13T10:00:00+02:00', "
+            "'2026-10-13T10:01:00+02:00')",
+            (transaction.id,),
+        )
+        connexion.execute(
+            "INSERT INTO regles (id, type, source, critere, valeur, nature, active, creee_le, "
+            "question_id) VALUES (1, 'prelevement', 'ca_joint', 'ics', 'FR00ZZZ000000', "
+            "'hors_budget', 1, '2026-10-13T10:01:00+02:00', 1)"
+        )
+        connexion.execute(
+            "INSERT INTO decisions (transaction_id, question_id, nature, regle_id, decidee_le) "
+            "VALUES (?, 1, 'hors_budget', 1, '2026-10-13T10:01:00+02:00')",
+            (transaction.id,),
+        )
     assert _tables(chemin) == TABLES_V3
+
+    with Ledger(chemin) as ledger:
+        assert ledger.version == 4
+        [regle] = ledger.regles()
+        assert (regle.id, regle.active, regle.desactivee_le) == (1, True, None)
+        assert regle.creee_le is not None
+        assert ledger.decisions()[transaction.id].regle_id == 1
+        assert ledger.propositions() == [] and ledger.exceptionnels() == {}
+    assert _tables(chemin) == TABLES_V4

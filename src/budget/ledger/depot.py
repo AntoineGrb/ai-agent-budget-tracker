@@ -1,9 +1,9 @@
 """Écriture et lecture des transactions dans le ledger SQLite."""
 
 import sqlite3
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from types import TracebackType
 from typing import Self
@@ -13,7 +13,9 @@ from pydantic import BaseModel, ConfigDict
 from budget.categories import SousCategorie
 from budget.classement.modeles import Classement, OrigineClassement, ResultatClassement
 from budget.errors import ControleError, LedgerError
+from budget.horloge import horodatage
 from budget.ledger import memoire
+from budget.ledger.memoire import PropositionEnregistree
 from budget.ledger.migrations import appliquer_migrations, version
 from budget.models import Nature, Source, Transaction
 from budget.montants import depuis_centimes, en_centimes
@@ -49,6 +51,7 @@ _COLONNES_CLASSEMENT = (
     "contrepartie_id",
     "lien_id",
     "exceptionnel",
+    "regle_id",
 )
 _TAILLE_LOT = 500
 """Nombre de paramètres d'une clause `IN`, sous la limite de variables de SQLite."""
@@ -178,7 +181,7 @@ class Ledger:
                 fichier.fichier,
                 fichier.empreinte,
                 len(identifiants),
-                datetime.now().astimezone().isoformat(timespec="seconds"),
+                horodatage(),
             ),
         )
         self._connexion.executemany(
@@ -311,7 +314,64 @@ class Ledger:
         return memoire.lire_decisions(self._connexion)
 
     def memoire(self) -> Memoire:
-        return Memoire(decisions=self.decisions(), regles=self.regles())
+        return Memoire(
+            decisions=self.decisions(),
+            regles=self.regles(),
+            exceptionnels=memoire.lire_exceptionnels(self._connexion),
+        )
+
+    def desactiver_regle(self, numero: int) -> Regle:
+        """Désactive une règle ; `RegleError` si elle est inconnue ou déjà inactive."""
+        return self._en_transaction(lambda: memoire.desactiver_regle(self._connexion, numero))
+
+    def operations_par_regle(self) -> dict[int, int]:
+        return memoire.operations_par_regle(self._connexion)
+
+    def mois_de_regle(self, numero: int) -> list[str]:
+        return memoire.mois_de_regle(self._connexion, numero)
+
+    def propositions(self, *, en_attente: bool = False) -> list[PropositionEnregistree]:
+        return memoire.lire_propositions(self._connexion, en_attente=en_attente)
+
+    def propositions_en_attente(
+        self,
+    ) -> dict[tuple[Source, str], PropositionEnregistree]:
+        return memoire.propositions_en_attente(self._connexion)
+
+    def enregistrer_propositions(
+        self,
+        mois: str,
+        propositions: Mapping[tuple[Source, str], SousCategorie],
+        modele: str | None,
+    ) -> None:
+        self._en_transaction(
+            lambda: memoire.enregistrer_propositions(self._connexion, mois, propositions, modele)
+        )
+
+    def corriger_proposition(
+        self, mois: str, source: Source, cle: str, sous_categorie: SousCategorie
+    ) -> None:
+        self._en_transaction(
+            lambda: memoire.corriger_proposition(self._connexion, mois, source, cle, sous_categorie)
+        )
+
+    def valider_proposition(self, regle: Regle) -> Regle:
+        """Règle marchand et proposition validée, dans une seule transaction SQL."""
+        return self._en_transaction(lambda: memoire.valider_proposition(self._connexion, regle))
+
+    def exceptionnels(self) -> dict[str, bool]:
+        return memoire.lire_exceptionnels(self._connexion)
+
+    def enregistrer_exceptionnel(self, transaction_id: str, exceptionnel: bool) -> None:
+        self._en_transaction(
+            lambda: memoire.enregistrer_exceptionnel(self._connexion, transaction_id, exceptionnel)
+        )
+
+    def lire_sql(self, requete: str, parametres: Sequence[object] = ()) -> list[tuple[object, ...]]:
+        """Lecture brute, réservée à la restitution (journal) : jamais d'écriture."""
+        if not requete.lstrip().upper().startswith("SELECT"):
+            raise LedgerError("lire_sql n'accepte que des requêtes SELECT")
+        return [tuple(ligne) for ligne in self._connexion.execute(requete, parametres)]
 
     def ajouter_regle(self, regle: Regle) -> Regle:
         """Ajoute une règle hors dialogue ; `RegleError` en cas de conflit ou de doublon."""
@@ -425,6 +485,7 @@ def _classement_vers_ligne(c: Classement) -> tuple[object, ...]:
         c.contrepartie_id,
         c.lien_id,
         int(c.exceptionnel),
+        c.regle_id,
     )
 
 
@@ -438,5 +499,6 @@ def _classement_depuis_ligne(ligne: Sequence[object]) -> Classement:
             "sous_categorie": SousCategorie(str(sous_categorie)) if sous_categorie else None,
             "origine": OrigineClassement(str(valeurs["origine"])),
             "exceptionnel": bool(valeurs["exceptionnel"]),
+            "regle_id": int(str(valeurs["regle_id"])) if valeurs["regle_id"] is not None else None,
         }
     )

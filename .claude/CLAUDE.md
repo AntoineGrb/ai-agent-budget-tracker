@@ -41,7 +41,7 @@
 
 ## Structure de la Documentation
 - `docs/cadrage/` : Cadrage général du projet (export Markdown du document de cadrage)
-- `docs/specs/` : Spécifications techniques par étape (`01-socle.md`, `02-parsers-credit-agricole.md`, `03-parser-trade-republic.md`, …)
+- `.claude/plan/` : Spécifications techniques par étape (`01-socle.md`, `02-parsers-credit-agricole.md`, `03-parser-trade-republic.md`, …)
 - `.claude/skills/` : Savoir-faire réutilisables (`implementer-spec`, `parser-releve-bancaire`, `fixtures-anonymisees`, `pydantic-ai-v2`)
 
 ## Données locales (hors git)

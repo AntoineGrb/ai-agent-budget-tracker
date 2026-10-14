@@ -373,26 +373,26 @@ Exemples de groupes : `CARREFOUR CITY SAINT MAUR D` (joint, 8 opérations, −12
 
 ## Critères d'acceptation
 
-- [ ] `cle_marchand` produit les clés du tableau ; groupes de juin et de juillet conformes aux valeurs attendues.
-- [ ] Ordre de classement d'un paiement carte : décision > RG-13 > règle marchand > en attente (tests synthétiques) ; la nature n'est jamais modifiée.
-- [ ] Règles marchand : validations du modèle (source, critère, nature vide, sous-catégorie obligatoire, refus Amazon) ; priorité exact > préfixe ; conflit et doublon refusés.
-- [ ] RG-09 : les avoirs reçoivent la sous-catégorie du marchand (MANOMANO et Zalando en juin, MILIBOO en juillet).
-- [ ] RG-13 : 49,72 € classé sans question ; 78,38 € présenté à compléter, validé en décision, jamais envoyé au LLM, sans règle.
-- [ ] Catégoriseur : un seul appel pour juin, avec exactement les 62 libellés masqués ; aucun montant, date ni compte dans les messages (inspectés via le `FunctionModel` ou `capture_run_messages`).
-- [ ] Confidentialité : un groupe synthétique dont la clé contient un IBAN ou 6 chiffres consécutifs est masqué dans le prompt, et le test échoue si un IBAN y apparaît ; une transaction hors carte dans un groupe lève `ControleError` avant l'appel.
-- [ ] Validateur : une sortie avec un libellé manquant, inconnu ou en double provoque une relance ; après épuisement des relances, mode dégradé sans proposition et sans erreur.
-- [ ] Mode dégradé : `--sans-llm` ou une clé absente présente les groupes sans proposition ; la saisie manuelle crée la règle.
-- [ ] Validation en lot : Entrée crée une règle par groupe ; une correction prime sur la proposition et survit à un `q` ; une proposition en attente n'est pas redemandée au LLM au passage suivant.
-- [ ] RG-15 : une seule candidate en juin ; la réponse ne revient jamais ; une dépense récurrente (même ICS au-dessus du seuil le mois précédent, cas synthétique) et une charge fixe ne sont pas proposées.
-- [ ] Second `classify` de juin : aucun appel, aucune question, classements identiques.
-- [ ] `--sans-questions` et entrée non interactive : aucun appel au LLM.
-- [ ] `budget rules list` et `budget rules disable` : affichage, compteurs, désactivation, opérations remises en attente au `classify` suivant, code 1 sur une règle inconnue.
-- [ ] `decisions.md` régénéré à chaque `classify`, identique au golden à horloge figée.
-- [ ] `budget export --mois 2026-06` : 159 lignes, colonnes et formats ci-dessus, aucune ligne `Non classée` après les scénarios.
-- [ ] Migration 0004 sur une base en version 3 contenant règles et décisions.
-- [ ] `models.ALLOW_MODEL_REQUESTS = False` pendant les tests ; aucune clé marchand dans les logs.
-- [ ] Les tests `donnees_reelles` (sans questions ni LLM) passent sur juin et juillet quand les données sont présentes.
-- [ ] Vérification complète (ruff, format, mypy, pytest) au vert.
+- [x] `cle_marchand` produit les clés du tableau ; groupes de juin et de juillet conformes aux valeurs attendues.
+- [x] Ordre de classement d'un paiement carte : décision > RG-13 > règle marchand > en attente (tests synthétiques) ; la nature n'est jamais modifiée.
+- [x] Règles marchand : validations du modèle (source, critère, nature vide, sous-catégorie obligatoire, refus Amazon) ; priorité exact > préfixe ; conflit et doublon refusés.
+- [x] RG-09 : les avoirs reçoivent la sous-catégorie du marchand (MANOMANO et Zalando en juin, MILIBOO en juillet).
+- [x] RG-13 : 49,72 € classé sans question ; 78,38 € présenté à compléter, validé en décision, jamais envoyé au LLM, sans règle.
+- [x] Catégoriseur : un seul appel pour juin, avec exactement les 62 libellés masqués ; aucun montant, date ni compte dans les messages (inspectés via le `FunctionModel` ou `capture_run_messages`).
+- [x] Confidentialité : un groupe synthétique dont la clé contient un IBAN ou 6 chiffres consécutifs est masqué dans le prompt, et le test échoue si un IBAN y apparaît ; une transaction hors carte dans un groupe lève `ControleError` avant l'appel.
+- [x] Validateur : une sortie avec un libellé manquant, inconnu ou en double provoque une relance ; après épuisement des relances, mode dégradé sans proposition et sans erreur.
+- [x] Mode dégradé : `--sans-llm` ou une clé absente présente les groupes sans proposition ; la saisie manuelle crée la règle.
+- [x] Validation en lot : Entrée crée une règle par groupe ; une correction prime sur la proposition et survit à un `q` ; une proposition en attente n'est pas redemandée au LLM au passage suivant.
+- [x] RG-15 : une seule candidate en juin ; la réponse ne revient jamais ; une dépense récurrente (même ICS au-dessus du seuil le mois précédent, cas synthétique) et une charge fixe ne sont pas proposées.
+- [x] Second `classify` de juin : aucun appel, aucune question, classements identiques.
+- [x] `--sans-questions` et entrée non interactive : aucun appel au LLM.
+- [x] `budget rules list` et `budget rules disable` : affichage, compteurs, désactivation, opérations remises en attente au `classify` suivant, code 1 sur une règle inconnue.
+- [x] `decisions.md` régénéré à chaque `classify`, identique au golden à horloge figée.
+- [x] `budget export --mois 2026-06` : 159 lignes, colonnes et formats ci-dessus, aucune ligne `Non classée` après les scénarios.
+- [x] Migration 0004 sur une base en version 3 contenant règles et décisions.
+- [x] `models.ALLOW_MODEL_REQUESTS = False` pendant les tests ; aucune clé marchand dans les logs.
+- [x] Les tests `donnees_reelles` (sans questions ni LLM) passent sur juin et juillet quand les données sont présentes.
+- [x] Vérification complète (ruff, format, mypy, pytest) au vert.
 
 ## Tests attendus
 
@@ -420,4 +420,32 @@ Exemples de groupes : `CARREFOUR CITY SAINT MAUR D` (joint, 8 opérations, −12
 
 ## Écarts constatés
 
-À compléter pendant l'implémentation.
+**PydanticAI v2** (version installée : `pydantic-ai-slim` 2.56.0, API vérifiée dans le code source installé et par un essai avec `FunctionModel`)
+
+- Relances de sortie : paramètre `retries={"output": 2}` d'`Agent` (dictionnaire `AgentRetries`). Après épuisement, `UnexpectedModelBehavior` (« Exceeded maximum output retries »), converti en mode dégradé.
+- Confirmés : `output_type`, `deps_type`, `instructions`, `@agent.output_validator`, `ModelRetry`, `run_sync(..., model=, deps=, model_settings=)`, `result.usage` (propriété : `requests`, `input_tokens`, `output_tokens`), `models.ALLOW_MODEL_REQUESTS`. Le modèle est passé à `run_sync` : l'agent est défini une fois, sans modèle, au niveau du module.
+- Sans clé, un modèle `anthropic:` lève `UserError` à l'appel ; un nom sans préfixe lève `UserError` (« Unknown model »). La CLI détecte la clé absente avant tout appel.
+- Le premier appel d'un processus affiche une bannière : désactivée par `pydantic_ai.BANNER_ENABLED = False` dans `agents/categoriseur.py`.
+- `pydantic_graph` appelle `asyncio.get_event_loop()` hors boucle (`DeprecationWarning` sous Python 3.12) : avertissement filtré dans `pyproject.toml`, sans effet sur le fonctionnement.
+
+**Organisation et contrats**
+
+- `Categoriseur` expose aussi `nom_modele` (renseigne `propositions.modele`). `CategoriseurIndisponible(raison)` porte le mode dégradé (`--sans-llm`, clé absente, aucun catégoriseur) ; toute défaillance lève `CategorisationError` (nouvelle exception) avec les propositions des lots déjà reçus, qui sont conservées.
+- `est_paiement_carte` déménage dans `classement/cartes.py` (le moteur le réimporte) pour éviter un cycle entre `cartes.py` et `moteur.py`.
+- `classer_et_questionner` est découpée en `classer`, `bloc_questions`, `bloc_validation`, `bloc_exceptionnels`. Les tests de la spec 06 appellent désormais `bloc_questions` pour le bloc 1 seul, puisque `classer_et_questionner` enchaîne les trois blocs.
+- `Ledger.lire_sql` : lecture brute (SELECT seulement), réservée au journal.
+- Détail d'un paiement carte classé par règle : `regles.<n°>`, avec `regle_id`.
+
+**Comportements précisés**
+
+- Journal : par défaut `decisions.md` à côté de la base (`data/decisions.md` avec la base par défaut), pour que les tests qui passent `--base` n'écrivent jamais dans `data/`.
+- RG-13 : les saisies d'une ligne Amazon restent en mémoire jusqu'à Entrée ; un `q` les perd (les corrections de groupes, elles, sont enregistrées aussitôt comme prévu). Le compteur « corrigés » inclut ces saisies.
+- Groupes à égalité de total : départagés par la clé marchand.
+- Résumé de `classify` : une ligne par bloc, puis la liste de ce qui reste en attente (questions, marchands, Amazon, tags).
+- `budget rules list` est large : lisible à partir d'environ 140 colonnes.
+
+**Vérifié sur les fixtures** : toutes les valeurs de juin et de juillet du tableau « Valeurs attendues » (65 lignes, 62 groupes dont 23 joint, 100 opérations, 1 appel à 62 libellés, 66 règles, 38 opérations de juillet classées par 20 règles de juin, MILIBOO, 8 RG-13 automatiques dont les avoirs, 2 à compléter, 71 groupes dont 51 joint, MIDAS en RG-15). En juillet, sans réponse au bloc 1, MIDAS est la seule candidate RG-15.
+
+**Scénario de référence** (`tests/scenarios/juin.py`) : propositions du `FunctionModel` pour les 133 clés ; correction de RELAY PARIS (Achats › Divers vers Loisirs › Sorties) ; saisies RG-13 : 218,68 € High-tech, 89,99 € Divers, 78,38 € Enfants › Vêtements & équipement ; OLIVERSTORE marquée exceptionnelle. Le journal de référence est `tests/golden/decisions_2026-06.md` (libellés anonymisés des fixtures).
+
+**Recette réelle** : non faite. Aucun `.env` n'existe encore (seulement `.env.example`) ; sans clé, `classify` passe en mode dégradé.

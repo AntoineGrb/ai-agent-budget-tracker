@@ -1,6 +1,6 @@
 import pytest
 
-from budget.libelles import normaliser_libelle
+from budget.libelles import cle_marchand, normaliser_libelle
 
 
 @pytest.mark.parametrize(
@@ -19,3 +19,24 @@ from budget.libelles import normaliser_libelle
 )
 def test_normaliser_libelle(texte: str, attendu: str) -> None:
     assert normaliser_libelle(texte) == attendu
+
+
+@pytest.mark.parametrize(
+    ("libelle_normalise", "cle"),
+    [
+        ("AMAZON PAYMENTS PARIS2441535/", "AMAZON PAYMENTS"),
+        ("AMAZON PAYMENTS 2441535", "AMAZON PAYMENTS"),
+        ("MONOPRIX 1357 STMAU2042885/", "MONOPRIX"),
+        ("DECATHLON CRETEI 0008 CRETEIL/", "DECATHLON CRETEI"),
+        ("BK K0028 PUTEAU 4819855", "BK"),
+        ("ESSO31816ROC1 2131616", "ESSO31816ROC1"),
+        ("GUOFA 2 ST MAUR DES FOSS", "GUOFA 2 ST MAUR DES FOSS"),
+        ("SUMUP *MES 4 MOMENTS SAINT MAUR DE", "SUMUP *MES 4 MOMENTS SAINT MAUR DE"),
+        ("UBER *EATS HELP.UBER.COM", "UBER *EATS HELP.UBER.COM"),
+        ("CANVA*/", "CANVA*"),
+        ("123456", "123456"),
+    ],
+)
+def test_cle_marchand(libelle_normalise: str, cle: str) -> None:
+    """Clé marchand : sans numéro de magasin, de terminal ni de transaction (spec 07)."""
+    assert cle_marchand(libelle_normalise) == cle

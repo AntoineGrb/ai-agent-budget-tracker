@@ -7,13 +7,14 @@ from pydantic import ValidationError
 
 from budget.categories import SousCategorie
 from budget.errors import ControleError, RegleError
-from budget.models import Nature, Source
+from budget.models import Nature, Source, Transaction
 from budget.regles import (
     ICS_PAYPAL,
     Critere,
     Regle,
     TypeRegle,
     est_rg14,
+    regle_marchand_retenue,
     regle_retenue,
     toujours_demander,
     verifier_nouvelle_regle,
@@ -158,14 +159,17 @@ def test_toujours_demander_l_emporte() -> None:
     assert toujours_demander([demander], t)
 
 
-def test_regle_marchand_carte_ignoree_avant_l_etape_7() -> None:
+def test_regle_marchand_ignoree_hors_paiement_carte() -> None:
+    """Les règles marchand ne sont évaluées que par `regle_marchand_retenue` (spec 07)."""
     t = fabriquer_transaction(LIBELLE, "-11.99")
-    marchand = _regle(
+    marchand = Regle(
         type=TypeRegle.MARCHAND_CARTE,
-        nature=Nature.DEPENSE,
+        source=Source.CA_CB,
+        critere=Critere.LIBELLE_EXACT,
+        valeur="SEPA DIRECT DEBIT TRANSFER TO ORANGE SA ( )",
         sous_categorie=SousCategorie.ACHATS_DIVERS,
     )
-    assert regle_retenue([marchand], t) is None
+    assert regle_retenue([marchand], t.model_copy(update={"source": Source.CA_CB})) is None
 
 
 # RG-14 -----------------------------------------------------------------------------------------
@@ -231,3 +235,85 @@ def test_specificites_differentes_acceptees() -> None:
     exacte = _regle(montants=("-550", "-550"), type=TypeRegle.VIREMENT, nature=Nature.DOTATION)
     verifier_nouvelle_regle(exacte, [existante])
     verifier_nouvelle_regle(exacte, [existante.model_copy(update={"active": False})])
+
+
+# Règles marchand carte (spec 07) ---------------------------------------------------------------
+
+
+def _marchand(
+    valeur: str = "MONOPRIX",
+    critere: Critere = Critere.LIBELLE_EXACT,
+    sous_categorie: SousCategorie | None = SousCategorie.COURSES_SUPERMARCHE,
+    *,
+    id: int | None = None,
+    source: Source = Source.CA_CB,
+    nature: Nature | None = None,
+) -> Regle:
+    return Regle(
+        id=id,
+        type=TypeRegle.MARCHAND_CARTE,
+        source=source,
+        critere=critere,
+        valeur=valeur,
+        nature=nature,
+        sous_categorie=sous_categorie,
+    )
+
+
+def _carte(libelle: str, montant: str = "-12.00", source: Source = Source.CA_CB) -> Transaction:
+    type_operation = "Avoir" if source is Source.TR else None
+    return fabriquer_transaction(libelle, montant, source=source, type_operation=type_operation)
+
+
+@pytest.mark.parametrize(
+    ("champs", "message"),
+    [
+        ({"source": Source.CA_JOINT}, "sources ca_cb ou tr"),
+        ({"critere": Critere.ICS}, "ne porte pas sur un ICS"),
+        ({"nature": Nature.DEPENSE}, "ne fixe pas la nature"),
+        ({"sous_categorie": None}, "sous-catégorie est obligatoire"),
+        ({"valeur": "AMAZON PAYMENTS"}, "RG-13"),
+        ({"valeur": "AMZN MKTP"}, "RG-13"),
+    ],
+)
+def test_marchand_validation(champs: dict[str, object], message: str) -> None:
+    with pytest.raises(ValidationError, match=message):
+        _marchand(**champs)  # type: ignore[arg-type]
+
+
+def test_marchand_correspondance_sur_la_cle() -> None:
+    """La valeur est comparée à la clé marchand, pas au libellé complet."""
+    regle = _marchand()
+    assert regle.s_applique(_carte("MONOPRIX 1357 STMAU2042885/"))
+    assert regle.s_applique(_carte("MONOPRIX 9999 AUTRE/", "51.00"))  # avoir : même règle
+    assert not regle.s_applique(_carte("MONOPRIX CITY 1357"))
+    assert not regle.s_applique(_carte("MONOPRIX 1357", source=Source.TR))
+    assert _marchand("MONOP", Critere.LIBELLE_PREFIXE).s_applique(_carte("MONOPRIX CITY 1357"))
+
+
+def test_marchand_priorite_exact_sur_prefixe() -> None:
+    t = _carte("MONOPRIX 1357 STMAU2042885/")
+    prefixe = _marchand("MONO", Critere.LIBELLE_PREFIXE, SousCategorie.ACHATS_DIVERS)
+    exacte = _marchand()
+    long = _marchand("MONOPRI", Critere.LIBELLE_PREFIXE, SousCategorie.COURSES_COMMERCES_BOUCHE)
+    assert regle_marchand_retenue([prefixe, exacte, long], t) is exacte
+    assert regle_marchand_retenue([prefixe, long], t) is long
+    assert regle_retenue([exacte], t) is None  # jamais évaluée par le moteur de la spec 06
+
+
+def test_marchand_egalite_contradictoire() -> None:
+    t = _carte("MONOPRIX 1357")
+    with pytest.raises(ControleError, match="même spécificité"):
+        regle_marchand_retenue(
+            [_marchand(id=1), _marchand(id=2, sous_categorie=SousCategorie.ACHATS_DIVERS)], t
+        )
+
+
+def test_marchand_conflit_et_doublon() -> None:
+    existante = _marchand(id=7)
+    with pytest.raises(RegleError, match="déjà couverte par la règle n° 7"):
+        verifier_nouvelle_regle(_marchand(), [existante])
+    with pytest.raises(RegleError, match="conflit avec la règle n° 7"):
+        verifier_nouvelle_regle(_marchand(sous_categorie=SousCategorie.ACHATS_DIVERS), [existante])
+    verifier_nouvelle_regle(_marchand(source=Source.TR), [existante])  # autre source
+    assert "courses.supermarche" in existante.decrire()

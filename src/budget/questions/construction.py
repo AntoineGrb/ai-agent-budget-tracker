@@ -2,8 +2,8 @@
 
 from collections.abc import Iterable, Sequence
 
+from budget.classement.cartes import est_paiement_carte
 from budget.classement.modeles import ResultatClassement
-from budget.classement.moteur import est_paiement_carte
 from budget.classement.virements_internes import est_virement_joint, est_virement_tr
 from budget.config import Contexte
 from budget.models import Nature, Source, Transaction

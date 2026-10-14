@@ -1,13 +1,15 @@
 import itertools
 import shutil
 from collections.abc import Callable, Iterator
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from functools import cache
 from pathlib import Path
 
 import pytest
+from pydantic_ai import models
 
+from budget import horloge
 from budget.dates import mois_budgetaire
 from budget.importation import construire_transactions
 from budget.ledger import FichierImporte, Ledger
@@ -15,6 +17,11 @@ from budget.libelles import normaliser_libelle
 from budget.models import Compte, Source, Transaction
 from budget.parsers.credit_agricole import parser_ca_cartes, parser_ca_joint
 from budget.parsers.trade_republic import parser_trade_republic
+
+# Cadrage §11 : aucun test ne peut appeler un vrai modèle (FunctionModel et TestModel seulement)
+models.ALLOW_MODEL_REQUESTS = False
+
+INSTANT_FIGE = datetime(2026, 10, 14, 18, 32, tzinfo=timezone(timedelta(hours=2)))
 
 RACINE = Path(__file__).resolve().parent.parent
 DOSSIER_FIXTURES = RACINE / "tests" / "fixtures"
@@ -141,3 +148,10 @@ def importer_synthetiques(ledger: Ledger, mois: str, transactions: list[Transact
             for source in sources
         ],
     )
+
+
+@pytest.fixture
+def horloge_figee() -> Iterator[datetime]:
+    """Horloge figée : journal et horodatages déterministes."""
+    with horloge.figer(INSTANT_FIGE):
+        yield INSTANT_FIGE

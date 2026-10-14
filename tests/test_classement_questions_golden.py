@@ -3,6 +3,7 @@
 import logging
 from collections import Counter
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -10,13 +11,17 @@ from pathlib import Path
 import pytest
 
 import budget
-from budget.classement.moteur import est_paiement_carte
+from budget.classement.cartes import est_paiement_carte
 from budget.config import Contexte, charger_contexte
 from budget.importation import NOMS_FICHIERS, importer_mois
 from budget.ledger import Ledger
 from budget.models import Nature, Source
 from budget.questions.dialogue import InterlocuteurScripte
-from budget.questions.execution import RapportClassement, classer_et_questionner
+from budget.questions.execution import (
+    RapportClassement,
+    bloc_questions,
+    classer_et_questionner,
+)
 from budget.questions.modeles import TypeQuestion
 from budget.regles import Critere, TypeRegle
 from tests.conftest import DOSSIER_DONNEES_REELLES, DOSSIER_FIXTURES, EXEMPLE_CONTEXTE, RACINE
@@ -39,10 +44,11 @@ def ledger(tmp_path: Path) -> Iterator[Ledger]:
 
 
 def _scenario_juin(ledger: Ledger, contexte: Contexte) -> RapportClassement:
+    """Bloc 1 seul (spec 06) ; les blocs 2 et 3 sont couverts par les tests de la spec 07."""
     interlocuteur = InterlocuteurScripte(reponses())
-    rapport = classer_et_questionner("2026-06", ledger, contexte, interlocuteur)
+    bilan = bloc_questions("2026-06", ledger, contexte, interlocuteur)
     assert interlocuteur.restantes == 0
-    return rapport
+    return replace(classer_et_questionner("2026-06", ledger, contexte, None), bilan=bilan)
 
 
 def test_juin_25_questions_au_premier_passage(ledger: Ledger, contexte: Contexte) -> None:
@@ -114,9 +120,10 @@ def test_scenario_juin_de_bout_en_bout(ledger: Ledger, contexte: Contexte) -> No
 def test_second_passage_sans_question(ledger: Ledger, contexte: Contexte) -> None:
     premier = _scenario_juin(ledger, contexte)
     interlocuteur = InterlocuteurScripte([])
-    second = classer_et_questionner("2026-06", ledger, contexte, interlocuteur)
-    assert second.questions == [] and second.bilan is None
+    assert bloc_questions("2026-06", ledger, contexte, interlocuteur) is None
     assert interlocuteur.invites == []
+    second = classer_et_questionner("2026-06", ledger, contexte, None)
+    assert second.questions == []
     assert second.resultat == premier.resultat
 
 

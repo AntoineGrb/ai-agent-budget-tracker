@@ -14,7 +14,7 @@ from budget.montants import Montant
 class OrigineClassement(StrEnum):
     CONTEXTE = "contexte"  # fichier de contexte du foyer
     REGLE_FIXE = "regle_fixe"  # règle codée en dur, indépendante du contexte (RG-03, RG-11…)
-    REGLE = "regle"  # règle apprise (étape 6)
+    REGLE = "regle"  # règle apprise (étapes 6 et 7)
     DECISION = "decision"  # décision rattachée à une seule opération (étape 6)
     AUCUNE = "aucune"  # non classée
 
@@ -34,6 +34,7 @@ class Classement(_Modele):
     contrepartie_id: str | None = None  # virement interne apparié
     lien_id: str | None = None  # RG-07, rempli à l'étape 6
     exceptionnel: bool = False  # RG-15, rempli à l'étape 7
+    regle_id: int | None = None  # règle apprise appliquée (spec 07)
 
     @classmethod
     def pour(
