@@ -37,8 +37,8 @@ _CARTES_LIBELLE = (
     re.compile(r"Carte N° X ?(\d{4})", re.IGNORECASE),
     re.compile(r"carte \d{6}X+(\d{4})", re.IGNORECASE),
 )
-_TYPE_DEBIT_DIFFERE = "Prélèvement carte"
-_DEBIT_DIFFERE = re.compile(r"DEPENSES CARTE X(\d{4}) AU (\d{2}/\d{2}/\d{2})")  # RG-03
+TYPE_DEBIT_DIFFERE = "Prélèvement carte"
+MOTIF_DEBIT_DIFFERE = re.compile(r"DEPENSES CARTE X(\d{4}) AU (\d{2}/\d{2}/\d{2})")  # RG-03
 
 
 class _Modele(BaseModel):
@@ -406,9 +406,9 @@ def _carte_du_libelle(libelle: str) -> str | None:
 
 
 def _debit_differe(operation: OperationBrute, fichier: str, ligne: int) -> LigneDebitDiffere | None:
-    if operation.type_operation != _TYPE_DEBIT_DIFFERE:
+    if operation.type_operation != TYPE_DEBIT_DIFFERE:
         return None
-    correspondance = _DEBIT_DIFFERE.search(operation.libelle)
+    correspondance = MOTIF_DEBIT_DIFFERE.search(operation.libelle)
     if correspondance is None:
         return None
     return LigneDebitDiffere(

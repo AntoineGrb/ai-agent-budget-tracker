@@ -63,6 +63,7 @@ class SousCategorie(StrEnum):
     TRANSPORT_TRANSPORTS_COMMUN = "transport.transports_commun"
     TRANSPORT_PARKING_PEAGES = "transport.parking_peages"
     TRANSPORT_ENTRETIEN_VEHICULE = "transport.entretien_vehicule"
+    TRANSPORT_ASSURANCE_VEHICULE = "transport.assurance_vehicule"
     TRANSPORT_TRAIN_AVION = "transport.train_avion"
     SANTE_PHARMACIE = "sante.pharmacie"
     SANTE_CONSULTATIONS = "sante.consultations"
@@ -123,6 +124,7 @@ _METADONNEES: dict[SousCategorie, tuple[NatureDepense, str]] = {
     SousCategorie.TRANSPORT_TRANSPORTS_COMMUN: (_FIXE, "Transports en commun"),
     SousCategorie.TRANSPORT_PARKING_PEAGES: (_PILOTABLE, "Parking & péages"),
     SousCategorie.TRANSPORT_ENTRETIEN_VEHICULE: (_PILOTABLE, "Entretien véhicule"),
+    SousCategorie.TRANSPORT_ASSURANCE_VEHICULE: (_FIXE, "Assurance véhicule"),
     SousCategorie.TRANSPORT_TRAIN_AVION: (_PILOTABLE, "Train & avion"),
     SousCategorie.SANTE_PHARMACIE: (_PILOTABLE, "Pharmacie"),
     SousCategorie.SANTE_CONSULTATIONS: (_PILOTABLE, "Consultations"),

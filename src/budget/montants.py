@@ -46,6 +46,32 @@ def formater_montant(montant: Decimal) -> str:
     return f"{signe}{corps} €"
 
 
+def formater_pourcentage(valeur: Decimal, *, signe: bool = False) -> str:
+    """Affiche un pourcentage au format français : `Decimal("-17.70")` → `"-17,70 %"`."""
+    texte = f"{valeur:+f}" if signe else f"{valeur:f}"
+    return f"{texte.replace('.', ',')} %"
+
+
+def en_centimes(montant: Decimal) -> int:
+    """Montant exact en centimes : `Decimal("-3116.50")` → `-311650`.
+
+    Lève `ValueError` au-delà de deux décimales significatives : jamais d'arrondi silencieux.
+    """
+    if not montant.is_finite():
+        raise ValueError(f"montant non fini {montant!r}")
+    centimes = montant.scaleb(2)
+    if centimes != centimes.to_integral_value():
+        raise ValueError(
+            f"montant {montant} : plus de deux décimales, conversion en centimes refusée"
+        )
+    return int(centimes)
+
+
+def depuis_centimes(centimes: int) -> Decimal:
+    """Inverse de `en_centimes` : `-311650` → `Decimal("-3116.50")`."""
+    return Decimal(centimes).scaleb(-2).quantize(CENTIME)
+
+
 def _refuser_float(valeur: Any) -> Any:
     if isinstance(valeur, float):
         raise ValueError("montant reçu en float : utiliser un Decimal ou un texte")

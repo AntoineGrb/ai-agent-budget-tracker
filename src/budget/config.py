@@ -40,7 +40,7 @@ class _Modele(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
-class _AvecCritere(_Modele):
+class AvecCritere(_Modele):
     """Élément reconnu sur une opération par au moins un critère."""
 
     ics: str | None = None
@@ -105,7 +105,7 @@ class Dotation(_Modele):  # RG-05
     montant: Montant
 
 
-class PaiementFinance(_AvecCritere):  # RG-08
+class PaiementFinance(AvecCritere):  # RG-08
     nom: str
     periodicite: Literal["mensuelle", "trimestrielle", "semestrielle", "annuelle"] | None = None
 
@@ -115,7 +115,7 @@ class Provision(_Modele):  # RG-08
     paiements_finances: tuple[PaiementFinance, ...] = ()
 
 
-class ChargeFixe(_AvecCritere):  # RG-18
+class ChargeFixe(AvecCritere):  # RG-18
     nom: str
     montant: Montant
     tolerance_pct: Pourcentage | None = None

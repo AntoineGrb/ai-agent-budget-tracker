@@ -200,7 +200,8 @@ Une erreur à n'importe quelle étape laisse la base inchangée. `aujourd_hui` e
 ```python
 class RattachementSalaire(BaseModel):   # frozen, extra="forbid"
     nom: str                             # nom du salaire dans le contexte
-    mois_paie: str                       # "AAAA-MM"
+    mois_paie: str | None                # "AAAA-MM" ; None = à déterminer par question (étape 6)
+    mois_possibles: tuple[str, ...]      # si mois_paie est None : mois de réception et mois précédent
 
 def rattacher_salaire(transaction: Transaction, contexte: Contexte) -> RattachementSalaire | None: ...
 ```
@@ -209,7 +210,9 @@ def rattacher_salaire(transaction: Transaction, contexte: Contexte) -> Rattachem
 2. Un salaire du contexte correspond si `normaliser_libelle(libelle_contient)` est contenu dans `libelle_normalise`. Plus d'un salaire correspondant : `ControleError`. Aucun : `None`.
 3. Si le salaire a un `periode_regex`, il est appliqué sur `libelle` (non normalisé, puisque l'utilisateur écrit l'expression d'après le libellé de la banque). Le groupe capturé `MM/AAAA` donne le mois de paie. Une correspondance dont le mois est invalide (`13/2026`) lève `ControleError`. Pas de correspondance : on passe à l'étape 4.
 4. Sinon, fenêtre `fenetre_salaire` : reçu entre le `du_jour` et la fin du mois M, mois de paie M ; reçu entre le 1er et le `au_jour_mois_suivant` du mois M+1, mois de paie M.
-5. Reçu hors fenêtre et sans période lisible : `ControleError` citant la date, le montant et le nom du salaire. Ne jamais deviner (voir points ouverts).
+5. Reçu hors fenêtre et sans période lisible (ex. le 10 du mois) : `mois_paie = None` et `mois_possibles = (mois précédent, mois de réception)`, triés chronologiquement. On ne devine pas, et on ne bloque pas non plus : l'opération est bien un salaire, seul son mois de paie reste à trancher. L'étape 5 émet une alerte RG-04 et l'étape 6 pose la question ; la réponse est mémorisée comme décision.
+
+Les cas 2 (deux salaires) et 3 (mois invalide) restent bloquants : ce sont des erreurs du contexte à corriger, pas des aléas de paiement.
 
 La fonction est pure et testée ici ; son résultat est stocké dans la projection de classement à l'étape 5.
 
@@ -258,21 +261,21 @@ Aucune nouvelle dépendance : `sqlite3`, `hashlib`, `unicodedata` (bibliothèque
 
 ## Critères d'acceptation
 
-- [ ] `budget import --mois 2026-06 --dossier tests/fixtures` (avec une base dans `tmp_path`) importe 159 transactions ; une seconde exécution en ajoute 0.
-- [ ] Le même import dans deux bases distinctes produit exactement les mêmes `id`.
-- [ ] RG-16 : les cas `VARENNE CAFE` et `RBCPJ PARIS` reçoivent les rangs 1 et 2 ; la base n'a aucun `id` en double.
-- [ ] RG-16 : un réimport d'un fichier modifié (une ligne retirée, en mémoire puis dans `tmp_path`) lève `ControleError` et laisse la base inchangée.
-- [ ] RG-01 : le mois budgétaire des achats carte est celui du débit (cas de juin et de juillet ci-dessus).
-- [ ] RG-02 : un dossier sans le PDF TR lève `ControleError` citant le fichier manquant ; un dossier vide les cite tous les trois.
-- [ ] Complétude : importer `2026-06` avec `aujourd_hui = 2026-06-30` lève `ControleError` ; avec `2026-07-01`, l'import passe.
-- [ ] Un fichier joint d'un autre mois déposé dans le dossier lève `ControleError` sur la période ; rien n'est écrit.
-- [ ] Un échec de parsing ou de contrôle sur l'un des trois fichiers laisse les tables `imports` et `transactions` vides (atomicité).
-- [ ] Migrations : une base neuve est en version 1 ; une réouverture n'applique rien ; une base en version 99 lève `LedgerError`.
-- [ ] Aucun `float` en base : les colonnes de montant sont de type `INTEGER` (test sur `typeof()` SQLite), et `en_centimes` refuse `Decimal("1.005")`.
-- [ ] RG-04 : les quatre cas du tableau ci-dessus, plus les cas synthétiques : salaire reçu le 03/07 sans période (mois de paie juin), reçu le 15/06 sans période (`ControleError`), période `13/2026` (`ControleError`), libellé correspondant à deux salaires (`ControleError`).
-- [ ] Aucun message d'erreur ni log ne contient de libellé complet.
-- [ ] Les tests `donnees_reelles` importent `data/raw/2026-06/` et `data/raw/2026-07/` sans erreur quand ils sont présents.
-- [ ] Vérification complète (ruff, format, mypy, pytest) au vert.
+- [x] `budget import --mois 2026-06 --dossier tests/fixtures` (avec une base dans `tmp_path`) importe 159 transactions ; une seconde exécution en ajoute 0.
+- [x] Le même import dans deux bases distinctes produit exactement les mêmes `id`.
+- [x] RG-16 : les cas `VARENNE CAFE` et `RBCPJ PARIS` reçoivent les rangs 1 et 2 ; la base n'a aucun `id` en double.
+- [x] RG-16 : un réimport d'un fichier modifié (une ligne retirée, en mémoire puis dans `tmp_path`) lève `ControleError` et laisse la base inchangée.
+- [x] RG-01 : le mois budgétaire des achats carte est celui du débit (cas de juin et de juillet ci-dessus).
+- [x] RG-02 : un dossier sans le PDF TR lève `ControleError` citant le fichier manquant ; un dossier vide les cite tous les trois.
+- [x] Complétude : importer `2026-06` avec `aujourd_hui = 2026-06-30` lève `ControleError` ; avec `2026-07-01`, l'import passe.
+- [x] Un fichier joint d'un autre mois déposé dans le dossier lève `ControleError` sur la période ; rien n'est écrit.
+- [x] Un échec de parsing ou de contrôle sur l'un des trois fichiers laisse les tables `imports` et `transactions` vides (atomicité).
+- [x] Migrations : une base neuve est en version 1 ; une réouverture n'applique rien ; une base en version 99 lève `LedgerError`.
+- [x] Aucun `float` en base : les colonnes de montant sont de type `INTEGER` (test sur `typeof()` SQLite), et `en_centimes` refuse `Decimal("1.005")`.
+- [x] RG-04 : les quatre cas du tableau ci-dessus, plus les cas synthétiques : salaire reçu le 03/07 sans période (mois de paie juin), reçu le 10/06 sans période (`mois_paie = None`, `mois_possibles = ("2026-05", "2026-06")`), période `13/2026` (`ControleError`), libellé correspondant à deux salaires (`ControleError`).
+- [x] Aucun message d'erreur ni log ne contient de libellé complet.
+- [x] Les tests `donnees_reelles` importent `data/raw/2026-06/` et `data/raw/2026-07/` sans erreur quand ils sont présents.
+- [x] Vérification complète (ruff, format, mypy, pytest) au vert.
 
 ## Tests attendus
 
@@ -290,10 +293,16 @@ Aucune nouvelle dépendance : `sqlite3`, `hashlib`, `unicodedata` (bibliothèque
 
 ## Points ouverts
 
-- **Salaire hors fenêtre sans période** : le cadrage ne dit pas quoi faire d'un salaire reçu le 10 du mois. La spec choisit l'arrêt (`ControleError`) plutôt qu'un rattachement deviné. Si le cas se produit sur des données réelles, trancher entre une question à l'étape 6 et un rattachement au mois de réception.
 - **Remplacement d'un mois** : un export corrigé par la banque ou retéléchargé avec des opérations en plus est refusé. Si le besoin apparaît (historique de l'étape 10), ajouter une option `--remplacer`, interdite dès qu'une décision humaine porte sur une transaction du mois.
 - **Historique (étape 10)** : un mois de l'historique dont un fichier manque ne peut pas être importé (RG-02). À réévaluer quand l'historique sera récupéré.
 
 ## Écarts constatés
 
-_À compléter pendant l'implémentation._
+- **Transactions SQL** : la connexion est en autocommit (`isolation_level=None`) et chaque transaction est ouverte explicitement (`BEGIN` pour une migration, `BEGIN IMMEDIATE` pour un import). Les migrations sont exécutées instruction par instruction, commentaires `--` retirés, car `executescript` validerait implicitement la transaction en cours.
+- **Garde-fou du ledger** : `enregistrer_import` refuse aussi une transaction dont la source ou le `mois_budgetaire` ne correspond pas à l'import (`ControleError`), en plus des règles d'idempotence de la spec.
+- **`importer_mois`** valide le format du mois (`ControleError`), en plus de la validation de la CLI (code de sortie 2 de Typer pour `--mois` mal formé).
+- **`importe_le`** : horodatage local avec décalage horaire (`2026-10-08T14:03:12+02:00`).
+- **`montant` dans la clé RG-16** : formaté `f"{montant:.2f}"`, ce qui donne bien `-6.80` et `-3116.50`.
+- **Valeurs de juillet** : 86 + 28 + 65 = 179 transactions, aucune de rang 2. Juin et juillet s'importent dans la même base sans collision d'identifiant.
+- **Risque RG-16 à surveiller** : l'identifiant ne contient ni le mois ni le fichier. Or les cycles cartes se chevauchent par la date d'achat (achat du 15/06 débité en juillet, alors que l'arrêté de juin est au 18/06). Deux achats identiques (même jour, même montant, même libellé) répartis sur deux cycles recevraient le même identifiant, et le second import serait refusé à tort (« déjà importées pour le mois … »). Non observé sur juin et juillet ; à traiter si cela arrive (par exemple en ajoutant la date de débit à la clé des cartes, ce qui change les identifiants déjà en base et demande donc une migration de données).
+- **Durée des tests** : la suite passe de ~35 s à ~1 min 40 s, car de nombreux tests d'import relisent le PDF TR. Un cache de parsing par session pourra être ajouté si cela gêne.

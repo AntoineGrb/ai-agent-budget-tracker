@@ -12,7 +12,7 @@ from budget.categories import (
 
 def test_cardinalites() -> None:
     assert len(Categorie) == 11
-    assert len(SousCategorie) == 38
+    assert len(SousCategorie) == 39
 
 
 @pytest.mark.parametrize("sc", list(SousCategorie))
@@ -42,6 +42,7 @@ def test_chaque_categorie_a_un_libelle_et_des_sous_categories() -> None:
         (SousCategorie.ENFANTS_ACTIVITES, NatureDepense.PILOTABLE),
         (SousCategorie.TRANSPORT_TRANSPORTS_COMMUN, NatureDepense.FIXE),
         (SousCategorie.TRANSPORT_CARBURANT, NatureDepense.PILOTABLE),
+        (SousCategorie.TRANSPORT_ASSURANCE_VEHICULE, NatureDepense.FIXE),
         (SousCategorie.SANTE_OPTIQUE, NatureDepense.PILOTABLE),
         (SousCategorie.ABONNEMENTS_FRAIS_BANCAIRES, NatureDepense.FIXE),
     ],

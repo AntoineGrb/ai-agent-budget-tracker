@@ -3,7 +3,14 @@ from decimal import Decimal
 import pytest
 
 from budget.errors import ParseError
-from budget.montants import formater_montant, parse_montant, parse_montant_optionnel
+from budget.montants import (
+    depuis_centimes,
+    en_centimes,
+    formater_montant,
+    formater_pourcentage,
+    parse_montant,
+    parse_montant_optionnel,
+)
 
 
 @pytest.mark.parametrize(
@@ -58,3 +65,41 @@ def test_parse_montant_optionnel_delegue_a_parse_montant() -> None:
 )
 def test_formater_montant(montant: Decimal, attendu: str) -> None:
     assert formater_montant(montant) == attendu
+
+
+@pytest.mark.parametrize(
+    ("montant", "centimes"),
+    [
+        (Decimal("-3116.50"), -311650),
+        (Decimal("4.8"), 480),
+        (Decimal("550"), 55000),
+        (Decimal("0.01"), 1),
+        (Decimal("-6.800"), -680),
+        (Decimal("0"), 0),
+    ],
+)
+def test_en_centimes_et_retour(montant: Decimal, centimes: int) -> None:
+    assert en_centimes(montant) == centimes
+    assert isinstance(en_centimes(montant), int)
+    retour = depuis_centimes(centimes)
+    assert retour == montant
+    assert retour.as_tuple().exponent == -2
+
+
+@pytest.mark.parametrize("montant", ["1.005", "-0.001", "NaN", "Infinity"])
+def test_en_centimes_refuse_plus_de_deux_decimales(montant: str) -> None:
+    with pytest.raises(ValueError):
+        en_centimes(Decimal(montant))
+
+
+@pytest.mark.parametrize(
+    ("valeur", "signe", "attendu"),
+    [
+        (Decimal("-17.70"), True, "-17,70 %"),
+        (Decimal("10.09"), True, "+10,09 %"),
+        (Decimal("10"), False, "10 %"),
+        (Decimal("12.5"), False, "12,5 %"),
+    ],
+)
+def test_formater_pourcentage(valeur: Decimal, signe: bool, attendu: str) -> None:
+    assert formater_pourcentage(valeur, signe=signe) == attendu

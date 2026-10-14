@@ -1,5 +1,7 @@
 """Interface en ligne de commande `budget`."""
 
+import re
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Annotated
@@ -9,9 +11,13 @@ from rich.console import Console
 from rich.table import Table
 
 from budget import __version__
+from budget.classement import ResultatClassement, classer_mois
 from budget.config import charger_contexte
-from budget.errors import ConfigError
-from budget.montants import formater_montant
+from budget.errors import BudgetError, ConfigError, ControleError
+from budget.importation import importer_mois
+from budget.ledger import Ledger
+from budget.models import MOTIF_MOIS, Nature, Source, Transaction
+from budget.montants import formater_montant, formater_pourcentage
 
 app = typer.Typer(help="Budget Tracker agentique : suivi mensuel des dépenses du foyer.")
 config_app = typer.Typer(help="Fichier de contexte du foyer.")
@@ -64,3 +70,164 @@ def verifier(
     tableau.add_row("Charges fixes", str(len(contexte.charges_fixes)))
     tableau.add_row("Charges fixes attendues / mois", formater_montant(total_charges))
     console.print(tableau)
+
+
+def _valider_mois(valeur: str) -> str:
+    if not re.fullmatch(MOTIF_MOIS, valeur):
+        raise typer.BadParameter(f"{valeur!r} invalide, format attendu AAAA-MM (ex. 2026-06)")
+    return valeur
+
+
+@app.command("import")
+def importer(
+    mois: Annotated[
+        str, typer.Option("--mois", callback=_valider_mois, help="Mois à importer (AAAA-MM).")
+    ],
+    dossier: Annotated[
+        Path, typer.Option("--dossier", help="Dossier contenant les sous-dossiers AAAA-MM.")
+    ] = Path("data/raw"),
+    base: Annotated[Path, typer.Option("--base", help="Base SQLite du ledger.")] = Path(
+        "data/budget.sqlite"
+    ),
+) -> None:
+    """Importe les trois extractions d'un mois dans le ledger (sans effet si déjà importé)."""
+    try:
+        with Ledger(base) as ledger:
+            rapport = importer_mois(mois, dossier, ledger, date.today())
+    except BudgetError as erreur:
+        console_erreur.print(f"[bold red]{erreur}[/]", highlight=False)
+        raise typer.Exit(code=1) from None
+
+    tableau = Table(title=f"Import du mois {mois}")
+    for colonne in ("Source", "Fichier", "Lues", "Ajoutées", "Déjà présentes"):
+        tableau.add_column(colonne, justify="right" if colonne[0] in "LAD" else "left")
+    for ligne in rapport.lignes:
+        tableau.add_row(
+            ligne.source.value,
+            ligne.fichier,
+            str(ligne.lues),
+            str(ligne.ajoutees),
+            str(ligne.deja_presentes),
+        )
+    tableau.add_section()
+    tableau.add_row(
+        "Total", "", str(rapport.lues), str(rapport.ajoutees), str(rapport.deja_presentes)
+    )
+    console.print(tableau)
+
+
+_SOURCES = {
+    Source.CA_JOINT: "Compte joint",
+    Source.CA_CB: "Cartes (compte joint)",
+    Source.TR: "Trade Republic (compte perso)",
+}
+
+
+@app.command("classify")
+def classifier(
+    mois: Annotated[
+        str, typer.Option("--mois", callback=_valider_mois, help="Mois à classer (AAAA-MM).")
+    ],
+    base: Annotated[Path, typer.Option("--base", help="Base SQLite du ledger.")] = Path(
+        "data/budget.sqlite"
+    ),
+    contexte: Annotated[
+        Path, typer.Option("--contexte", help="Fichier de contexte du foyer.")
+    ] = Path("data/contexte.yaml"),
+) -> None:
+    """Attribue une nature de flux aux opérations du mois classables sans question (étape 5)."""
+    try:
+        reference = charger_contexte(contexte)
+        with Ledger(base) as ledger:
+            if mois not in ledger.mois_importes():
+                raise ControleError(
+                    f"mois {mois} non importé dans {base} : lancer d'abord "
+                    f"`budget import --mois {mois}`"
+                )
+            transactions = ledger.transactions(mois)
+            resultat = classer_mois(mois, transactions, reference)
+            ledger.enregistrer_classement(mois, resultat)
+    except BudgetError as erreur:
+        console_erreur.print(str(erreur), style="bold red", markup=False, highlight=False)
+        raise typer.Exit(code=1) from None
+    _afficher_classement(transactions, resultat)
+
+
+def _afficher_classement(transactions: list[Transaction], resultat: ResultatClassement) -> None:
+    par_id = {t.id: t for t in transactions}
+
+    repartition = Table(title=f"Natures de flux : {resultat.mois}")
+    for colonne in ("Source", "Nature", "Opérations", "Total"):
+        repartition.add_column(
+            colonne, justify="right" if colonne in ("Opérations", "Total") else "left"
+        )
+    non_classees = []
+    for source, titre in _SOURCES.items():
+        groupes: dict[Nature | None, list[Transaction]] = {}
+        for classement in resultat.classements:
+            transaction = par_id[classement.transaction_id]
+            if transaction.source is source:
+                groupes.setdefault(classement.nature, []).append(transaction)
+                if classement.nature is None:
+                    non_classees.append((transaction, classement.contrepartie_id is not None))
+        for nature in [*Nature, None]:
+            if nature not in groupes:
+                continue
+            liste = groupes[nature]
+            total = sum((t.montant for t in liste), start=Decimal(0))
+            libelle = nature.value if nature is not None else "[yellow]non classées[/]"
+            repartition.add_row(titre, libelle, str(len(liste)), formater_montant(total))
+            titre = ""
+        repartition.add_section()
+    console.print(repartition)
+
+    tableau = Table(title=f"Opérations non classées ({len(non_classees)}) : questions à l'étape 6")
+    tableau.add_column("Source", no_wrap=True)
+    tableau.add_column("Date", no_wrap=True)
+    tableau.add_column("Type", no_wrap=True, overflow="ellipsis", max_width=24)
+    tableau.add_column("Libellé", no_wrap=True, overflow="ellipsis", max_width=50)
+    tableau.add_column("Montant", justify="right", no_wrap=True)
+    tableau.add_column("Apparié", no_wrap=True)
+    for transaction, apparie in non_classees:
+        tableau.add_row(
+            transaction.source.value,
+            f"{transaction.date_operation:%d/%m/%Y}",
+            transaction.type_operation or "",
+            transaction.libelle,
+            formater_montant(transaction.montant),
+            "oui" if apparie else "",
+        )
+    console.print(tableau)
+
+    charges = Table(title="Charges fixes (RG-18)")
+    for colonne in ("Charge", "Attendu", "Réel", "Écart", "Écart %", "Statut"):
+        charges.add_column(colonne, justify="left" if colonne in ("Charge", "Statut") else "right")
+    for r in resultat.rapprochements:
+        if r.reel is None:
+            statut = "[red]absente[/]"
+        else:
+            statut = (
+                f"[red]hors seuil ({formater_pourcentage(r.seuil_pct)})[/]"
+                if r.hors_seuil
+                else "[green]OK[/]"
+            )
+        charges.add_row(
+            r.nom,
+            formater_montant(r.attendu),
+            formater_montant(r.reel) if r.reel is not None else "",
+            formater_montant(r.ecart) if r.ecart is not None else "",
+            formater_pourcentage(r.ecart_pct, signe=True) if r.ecart_pct is not None else "",
+            statut,
+        )
+    console.print(charges)
+
+    if resultat.alertes:
+        console.print(f"[bold]Alertes ({len(resultat.alertes)})[/]")
+        for code in sorted(resultat.alertes_par_code()):
+            console.print(f"[bold yellow]{code}[/]")
+            for alerte in resultat.alertes:
+                if alerte.code == code:
+                    console.print(f"  - {alerte.message}", markup=False, highlight=False)
+    else:
+        console.print("[green]Aucune alerte[/]")
+    console.print(f"Virements internes appariés : {resultat.virements_internes_apparies}")

@@ -39,3 +39,7 @@ class ConfigError(BudgetError):
 
     def __str__(self) -> str:
         return "\n".join([self.message, *(f"  - {erreur}" for erreur in self.erreurs)])
+
+
+class LedgerError(BudgetError):
+    """Base SQLite illisible ou de version inconnue."""

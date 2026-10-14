@@ -68,7 +68,8 @@ class Classement(BaseModel):               # frozen, extra="forbid"
     transaction_id: str
     nature: Nature | None                  # None = non classée
     sous_categorie: SousCategorie | None
-    mois_rattachement: str                 # mois_budgetaire, sauf salaires : mois de paie (RG-04)
+    mois_rattachement: str | None          # mois_budgetaire, sauf salaires : mois de paie (RG-04) ;
+                                           # None = salaire dont le mois de paie est à déterminer
     origine: OrigineClassement             # contexte | regle_fixe | regle | decision | aucune
     detail: str | None                     # "RG-03", "dotations.perso", "charges_fixes.energie"…
     contrepartie_id: str | None            # virement interne apparié
@@ -113,7 +114,7 @@ Chaque transaction reçoit le **premier** classement applicable dans l'ordre ci-
 | Ordre | Règle | Périmètre | Résultat |
 | --- | --- | --- | --- |
 | 1 | RG-03 : débit différé | `ca_joint`, type `Prélèvement carte`, libellé conforme au motif `DEPENSES CARTE Xdddd AU JJ/MM/AA` (constante exposée par le parser CA) | `NEUTRALISE`, détail `RG-03` |
-| 2 | RG-04 : salaire | `rattacher_salaire` (spec 04) non nul | `REVENU`, `mois_rattachement` = mois de paie, détail `salaires.<nom>` |
+| 2 | RG-04 : salaire | `rattacher_salaire` (spec 04) non nul | `REVENU`, `mois_rattachement` = mois de paie (ou `None` s'il est à déterminer), détail `salaires.<nom>` |
 | 3 | RG-05 : dotation | `ca_joint`, montant négatif, libellé contenant `libelle_contient` **et** `abs(montant) == montant` | `DOTATION`, détail `dotations.<nom>` |
 | 4 | RG-08 : reprise de provision | `ca_joint`, montant positif, libellé contenant `reprises_libelle_contient` | `PROVISION`, détail `provision.reprise` |
 | 5 | RG-08 : paiement financé | `ca_joint`, montant négatif, `correspond` à un `paiements_finances` | `PROVISION`, détail `provision.<nom>` |
@@ -164,6 +165,7 @@ L'alerte n'empêche pas le classement : l'opération suit l'ordre d'application 
 ### Autres alertes
 
 - **RG-05, dotation non trouvée** : une dotation du contexte sans opération correspondante dans le mois. Si une opération a le bon libellé mais un autre montant, le message le précise (« dotation perso_conjoint non trouvée : libellé présent le 30/06/2026 avec 550,00 € au lieu de 500,00 € »).
+- **RG-04, mois de paie à déterminer** : salaire reçu hors fenêtre sans période dans le libellé (« salaire salaire_1 reçu le 10/06/2026, 2 729,05 € : mois de paie à confirmer, question à l'étape 6 »). L'opération est classée `REVENU` ; seuls les indicateurs de revenus par mois de paie en dépendent, et la publication (étape 8) attend la réponse.
 - **RG-08, provision non appariée** : une reprise de provision sans paiement financé dans le mois, ou l'inverse.
 
 Les alertes sont informatives : elles ne bloquent ni le classement ni la suite. Les contrôles bloquants restent ceux de l'import (spec 04).
@@ -188,7 +190,7 @@ CREATE TABLE classements (
     mois_budgetaire    TEXT NOT NULL,
     nature             TEXT,                 -- NULL = non classée
     sous_categorie     TEXT,
-    mois_rattachement  TEXT NOT NULL,
+    mois_rattachement  TEXT,                 -- NULL : mois de paie à déterminer (RG-04)
     origine            TEXT NOT NULL,
     detail             TEXT,
     contrepartie_id    TEXT REFERENCES transactions (id),
@@ -316,23 +318,24 @@ Aucune nouvelle dépendance.
 
 ## Critères d'acceptation
 
-- [ ] `contexte.yaml` réel validé par `budget config verifier` ; les décisions de la section Préparation sont notées dans « Écarts constatés ».
-- [ ] `classer_mois` renvoie les valeurs des tableaux de juin sur les fixtures (nombres et totaux par nature et par compte, détails).
-- [ ] Les valeurs de juillet ci-dessus sont vérifiées par les tests, et les autres sont figées après la première exécution.
-- [ ] Chaque transaction du mois a exactement une ligne dans `classements`, y compris les non classées.
-- [ ] RG-03 : les deux lignes de débit différé sont `NEUTRALISE`, et le net des cartes égale leur somme.
-- [ ] RG-05 : une dotation au bon libellé mais au mauvais montant n'est pas classée et produit l'alerte décrite.
-- [ ] RG-08 : reprise et paiement financé sont `PROVISION` ; une reprise seule produit une alerte (cas synthétique).
-- [ ] RG-11 : chaque type TR du tableau est couvert, et un type inconnu produit l'alerte `TR-TYPE`.
-- [ ] RG-12 : l'`Avoir` Zalando en entrée est un `REMBOURSEMENT`, l'`Avoir` DECATHLON en sortie une `DEPENSE`.
-- [ ] RG-17 : alerte pour une carte inactive et pour une carte inconnue (cas synthétique), sans effet sur le classement.
-- [ ] RG-18 : appariement des deux prêts par montant (juin et juillet), écarts et seuils (y compris la tolérance propre de `garde_enfant`), charge absente (cas synthétique), nombre de candidates différent du nombre de charges (cas synthétique).
-- [ ] Virements internes : appariement unique, absence d'appariement en cas d'ambiguïté (deux virements de même montant dans la fenêtre), contrepartie de dotation classée `DOTATION`.
-- [ ] Un contexte ambigu (libellé correspondant à deux dotations) lève `ControleError`.
-- [ ] `budget classify` est rejouable : deux exécutions successives produisent des tables identiques.
-- [ ] Aucun message d'alerte ou d'erreur ne contient de libellé complet.
-- [ ] Les tests `donnees_reelles` classent `data/raw/2026-06/` et `2026-07/` avec `data/contexte.yaml` sans erreur quand ils sont présents.
-- [ ] Vérification complète (ruff, format, mypy, pytest) au vert.
+- [x] `contexte.yaml` réel validé par `budget config verifier` ; les décisions de la section Préparation sont notées dans « Écarts constatés ».
+- [x] `classer_mois` renvoie les valeurs des tableaux de juin sur les fixtures (nombres et totaux par nature et par compte, détails).
+- [x] Les valeurs de juillet ci-dessus sont vérifiées par les tests, et les autres sont figées après la première exécution.
+- [x] Chaque transaction du mois a exactement une ligne dans `classements`, y compris les non classées.
+- [x] RG-03 : les deux lignes de débit différé sont `NEUTRALISE`, et le net des cartes égale leur somme.
+- [x] RG-04 : un salaire reçu hors fenêtre sans période (cas synthétique) est `REVENU`, avec `mois_rattachement` vide et une alerte RG-04, sans bloquer le classement du mois.
+- [x] RG-05 : une dotation au bon libellé mais au mauvais montant n'est pas classée et produit l'alerte décrite.
+- [x] RG-08 : reprise et paiement financé sont `PROVISION` ; une reprise seule produit une alerte (cas synthétique).
+- [x] RG-11 : chaque type TR du tableau est couvert, et un type inconnu produit l'alerte `TR-TYPE`.
+- [x] RG-12 : l'`Avoir` Zalando en entrée est un `REMBOURSEMENT`, l'`Avoir` DECATHLON en sortie une `DEPENSE`.
+- [x] RG-17 : alerte pour une carte inactive et pour une carte inconnue (cas synthétique), sans effet sur le classement.
+- [x] RG-18 : appariement des deux prêts par montant (juin et juillet), écarts et seuils (y compris la tolérance propre de `garde_enfant`), charge absente (cas synthétique), nombre de candidates différent du nombre de charges (cas synthétique).
+- [x] Virements internes : appariement unique, absence d'appariement en cas d'ambiguïté (deux virements de même montant dans la fenêtre), contrepartie de dotation classée `DOTATION`.
+- [x] Un contexte ambigu (libellé correspondant à deux dotations) lève `ControleError`.
+- [x] `budget classify` est rejouable : deux exécutions successives produisent des tables identiques.
+- [x] Aucun message d'alerte ou d'erreur ne contient de libellé complet.
+- [x] Les tests `donnees_reelles` classent `data/raw/2026-06/` et `2026-07/` avec `data/contexte.yaml` sans erreur quand ils sont présents.
+- [x] Vérification complète (ruff, format, mypy, pytest) au vert.
 
 ## Tests attendus
 
@@ -358,4 +361,39 @@ Les cas synthétiques sont construits avec une fabrique de `Transaction` dans `c
 
 ## Écarts constatés
 
-_À compléter pendant l'implémentation._
+**Décisions de la section Préparation (2026-10-14)**
+
+- Dotations de juillet : mois exceptionnel. Le contexte garde les trois dotations habituelles ; les virements de juillet seront tranchés par les questions de l'étape 6. Aucune évolution de schéma.
+- Prêts : les montants de juillet sont durables. `data/contexte.yaml` porte 1 471,00 € et 105,84 € ; juin réel sort donc deux alertes RG-18 (+21,51 % et +15,16 %), ce qui est attendu. `contexte.example.yaml` garde les anciens montants pour les tests golden.
+- Direct Assurance : nouvelle sous-catégorie `transport.assurance_vehicule` (Fixe, « Assurance véhicule ») dans `categories.py` (39 sous-catégories), et charge fixe `assurance_auto` (ICS `FR64ZZZ395200`, 33,13 €) dans `data/contexte.yaml`. Juin réel la signale « attendue absente ». Le tableau des catégories du cadrage (§4) n'est pas mis à jour.
+- Provision : seuls les paiements de copropriété ; les impôts restent hors provision (point ouvert §13).
+- `data/contexte.yaml` généré depuis l'exemple (marqueurs remplacés via `data/anonymisation.yaml`) et validé par `budget config verifier`. Les tests `donnees_reelles` classent juin et juillet réels sans erreur.
+
+**Écarts d'implémentation**
+
+- `classer_mois(mois, transactions, contexte)` prend le mois en paramètre : le résultat le porte, et une transaction d'un autre mois budgétaire lève `ControleError`.
+- `_AvecCritere` devient `AvecCritere` (public) dans `config.py`, et le parser CA expose `TYPE_DEBIT_DIFFERE` et `MOTIF_DEBIT_DIFFERE` (RG-03).
+- Un débit correspondant à plusieurs `paiements_finances` lève aussi `ControleError` (RG-08), par cohérence avec les salaires, dotations et charges fixes.
+- Charge absente : `reel`, `ecart` et `ecart_pct` à `None`, `hors_seuil` à faux ; l'alerte « attendue absente » la signale. L'alerte d'écart de nombre des charges à critères identiques n'est émise que s'il existe au moins une candidate (sinon les alertes « absente » suffisent).
+- Détails non fixés par la spec : `paiement_carte` (dépense carte), `RG-09` (remboursement carte). La contrepartie d'une dotation a l'origine `contexte`. Un virement interne apparié reçoit `contrepartie_id` des deux côtés, quel que soit le classement du côté joint.
+- Pourcentages affichés avec un signe ASCII (`-17,70 %`), comme `formater_montant`.
+- Migration 0002 : index `classements_mois` et `alertes_mois` en plus des tables de la spec, dont `charges_fixes_transactions`.
+- `enregistrer_classement` refuse un résultat qui n'a pas exactement un classement par transaction du mois.
+
+**Valeurs de juillet figées** (fixtures, `contexte.example.yaml`)
+
+| Source | Nature | Nombre | Total |
+| --- | --- | --- | --- |
+| `ca_joint` | `NEUTRALISE` | 2 | −3 548,38 € |
+| `ca_joint` | `REVENU` | 1 | +2 726,58 € |
+| `ca_joint` | `DEPENSE` | 8 | −2 532,15 € |
+| `ca_joint` | non classées | 17 | +759,26 € |
+| `ca_cb` | `DEPENSE` | 78 | −4 457,68 € |
+| `ca_cb` | `REMBOURSEMENT` | 8 | +909,30 € |
+| `tr` | `DEPENSE` | 51 | −1 182,49 € |
+| `tr` | `REMBOURSEMENT` | 1 | +39,99 € |
+| `tr` | `EPARGNE` | 8 | −249,98 € |
+| `tr` | `REVENU` | 2 | +13,62 € |
+| `tr` | non classées | 3 | +1 288,01 € |
+
+Alertes de juillet : 3 RG-05 et 2 RG-18. Totaux des non classées de juin également figés : +1 540,78 € (joint) et +328,01 € (TR).
