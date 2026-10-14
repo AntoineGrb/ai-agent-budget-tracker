@@ -15,13 +15,13 @@ DELAI_VIREMENT_INTERNE_JOURS = 3
 _TYPES_JOINT = {"VIREMENT EMIS", "VIREMENT EN VOTRE FAVEUR"}
 
 
-def _cote_joint(transaction: Transaction) -> bool:
+def est_virement_joint(transaction: Transaction) -> bool:
     return transaction.source is Source.CA_JOINT and (
         normaliser_libelle(transaction.type_operation or "") in _TYPES_JOINT
     )
 
 
-def _cote_tr(transaction: Transaction) -> bool:
+def est_virement_tr(transaction: Transaction) -> bool:
     return (
         transaction.source is Source.TR
         and type_tr(transaction) == TYPE_VIREMENT
@@ -45,8 +45,8 @@ def apparier_virements_internes(
 
     En cas d'ambiguïté, aucun appariement : les deux côtés seront traités par question.
     """
-    joints = [t for t in transactions if _cote_joint(t)]
-    trs = [t for t in transactions if _cote_tr(t)]
+    joints = [t for t in transactions if est_virement_joint(t)]
+    trs = [t for t in transactions if est_virement_tr(t)]
     paires = []
     for joint in joints:
         candidates = [tr for tr in trs if _compatibles(joint, tr)]

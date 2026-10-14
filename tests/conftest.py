@@ -10,7 +10,7 @@ import pytest
 
 from budget.dates import mois_budgetaire
 from budget.importation import construire_transactions
-from budget.ledger import Ledger
+from budget.ledger import FichierImporte, Ledger
 from budget.libelles import normaliser_libelle
 from budget.models import Compte, Source, Transaction
 from budget.parsers.credit_agricole import parser_ca_cartes, parser_ca_joint
@@ -123,4 +123,21 @@ def fabriquer_transaction(
         ics=ics,
         carte=carte,
         montant=Decimal(montant),
+    )
+
+
+def importer_synthetiques(ledger: Ledger, mois: str, transactions: list[Transaction]) -> None:
+    """Importe des transactions synthétiques du mois, un fichier par source."""
+    sources = sorted({t.source for t in transactions}, key=lambda s: s.value)
+    ledger.enregistrer_import(
+        mois,
+        [
+            FichierImporte(
+                source=source,
+                fichier=f"synthetique_{source.value}",
+                empreinte="0" * 64,
+                transactions=tuple(t for t in transactions if t.source is source),
+            )
+            for source in sources
+        ],
     )

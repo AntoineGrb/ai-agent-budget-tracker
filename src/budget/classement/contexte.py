@@ -39,25 +39,11 @@ def _refuser_ambiguite(regle: str, transaction: Transaction, element: str, noms:
 # Règles 2 à 5 : une transaction à la fois ---------------------------------------------------
 
 
-def classer_salaire(
-    transaction: Transaction, contexte: Contexte, alertes: list[Alerte]
-) -> Classement | None:
-    """RG-04 : salaire rattaché à son mois de paie ; mois inconnu = alerte, pas d'arrêt."""
+def classer_salaire(transaction: Transaction, contexte: Contexte) -> Classement | None:
+    """RG-04 : salaire rattaché à son mois de paie (`None` s'il est à déterminer)."""
     rattachement = rattacher_salaire(transaction, contexte)
     if rattachement is None:
         return None
-    if rattachement.mois_paie is None:
-        alertes.append(
-            Alerte(
-                code="RG-04",
-                transaction_id=transaction.id,
-                message=(
-                    f"salaire {rattachement.nom} reçu le {transaction.date_operation:%d/%m/%Y}, "
-                    f"{formater_montant(transaction.montant)} : mois de paie à confirmer "
-                    f"({' ou '.join(rattachement.mois_possibles)}), question à l'étape 6"
-                ),
-            )
-        )
     return Classement.pour(
         transaction, Nature.REVENU, _CONTEXTE, f"salaires.{rattachement.nom}"
     ).model_copy(update={"mois_rattachement": rattachement.mois_paie})
@@ -247,6 +233,35 @@ def alertes_cartes(transactions: Iterable[Transaction], contexte: Contexte) -> l
         alertes.append(
             Alerte(
                 code="RG-17", transaction_id=t.id, message=f"carte {t.carte} {etat} : {reperer(t)}"
+            )
+        )
+    return alertes
+
+
+def alertes_salaires(
+    transactions: Iterable[Transaction], classements: dict[str, Classement], contexte: Contexte
+) -> list[Alerte]:
+    """RG-04 : salaire dont le mois de paie reste à déterminer (ni période, ni réponse)."""
+    alertes = []
+    for t in transactions:
+        classement = classements.get(t.id)
+        if (
+            classement is None
+            or not (classement.detail or "").startswith("salaires.")
+            or classement.mois_rattachement is not None
+        ):
+            continue
+        rattachement = rattacher_salaire(t, contexte)
+        assert rattachement is not None
+        alertes.append(
+            Alerte(
+                code="RG-04",
+                transaction_id=t.id,
+                message=(
+                    f"salaire {rattachement.nom} reçu le {t.date_operation:%d/%m/%Y}, "
+                    f"{formater_montant(t.montant)} : mois de paie à confirmer "
+                    f"({' ou '.join(rattachement.mois_possibles)}), question à l'étape 6"
+                ),
             )
         )
     return alertes

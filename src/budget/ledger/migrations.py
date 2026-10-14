@@ -105,6 +105,53 @@ CREATE TABLE charges_fixes_transactions (
 );
 """,
     ),
+    Migration(
+        numero=3,
+        description="questions, règles apprises et décisions",
+        sql="""
+CREATE TABLE questions (
+    id               INTEGER PRIMARY KEY,
+    transaction_id   TEXT NOT NULL UNIQUE REFERENCES transactions (id),
+    contrepartie_id  TEXT REFERENCES transactions (id),
+    type             TEXT NOT NULL CHECK (type IN ('virement', 'salaire', 'operation')),
+    motif            TEXT NOT NULL,                  -- 'RG-06', 'RG-14', 'RG-04', 'non_classe'
+    posee_le         TEXT NOT NULL,
+    repondue_le      TEXT
+);
+
+CREATE TABLE regles (
+    id                    INTEGER PRIMARY KEY,
+    type                  TEXT NOT NULL CHECK (type IN (
+                              'virement', 'prelevement', 'marchand_carte', 'toujours_demander'
+                          )),
+    source                TEXT NOT NULL,
+    critere               TEXT NOT NULL
+                          CHECK (critere IN ('ics', 'libelle_exact', 'libelle_prefixe')),
+    valeur                TEXT NOT NULL,
+    montant_min_centimes  INTEGER,
+    montant_max_centimes  INTEGER,
+    nature                TEXT,
+    sous_categorie        TEXT,
+    detail                TEXT,
+    active                INTEGER NOT NULL DEFAULT 1,
+    creee_le              TEXT NOT NULL,
+    question_id           INTEGER REFERENCES questions (id),
+    CHECK ((montant_min_centimes IS NULL) = (montant_max_centimes IS NULL))
+);
+
+CREATE TABLE decisions (
+    transaction_id  TEXT PRIMARY KEY REFERENCES transactions (id),
+    question_id     INTEGER NOT NULL REFERENCES questions (id),
+    nature          TEXT NOT NULL,
+    sous_categorie  TEXT,
+    detail          TEXT,
+    lien_id         TEXT REFERENCES transactions (id),
+    mois_paie       TEXT,                            -- question salaire (RG-04)
+    regle_id        INTEGER REFERENCES regles (id),  -- règle créée à partir de cette réponse
+    decidee_le      TEXT NOT NULL
+);
+""",
+    ),
 )
 
 VERSION_COURANTE = MIGRATIONS[-1].numero

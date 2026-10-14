@@ -338,23 +338,23 @@ Aucune nouvelle dépendance : la saisie utilise Rich (déjà présent).
 
 ## Critères d'acceptation
 
-- [ ] Juin : 25 questions au premier passage, réparties comme ci-dessus ; une seule question pour la paire « Velo ».
-- [ ] RG-04 : un salaire synthétique reçu le 10/06 sans période produit une question `salaire` à deux choix (`2026-05`, `2026-06`) ; après réponse, `mois_rattachement` vaut le mois choisi, la nature reste `REVENU`, aucune règle n'est proposée, et la question ne revient pas.
-- [ ] Le scénario scripté de juin s'exécute de bout en bout avec `InterlocuteurScripte` ; un second passage pose 0 question.
-- [ ] Juillet après juin : règles réutilisées et questions RG-14 reposées, comme décrit.
-- [ ] RG-06 : tout virement non couvert par le contexte, une décision ou une règle produit une question.
-- [ ] RG-07 : les candidates respectent fenêtre, ratio, exclusions et tri ; DECATHLON 409,97 € figure dans la première page pour « Velo » ; le lien est enregistré sur les deux côtés de la paire ; aucune règle n'est proposée.
-- [ ] RG-09 et RG-10 : un remboursement reçoit une sous-catégorie ; un hors budget n'en a pas.
-- [ ] RG-14 : PayPal et chèques sont toujours posés, même si une règle correspondante existe en base, et aucune règle n'est proposée.
-- [ ] Priorité : ICS > libellé exact > préfixe ; condition de montant > sans condition ; préfixe long > préfixe court (tests unitaires sur des règles synthétiques).
-- [ ] Conflits : deux règles de même spécificité, à montants recouvrants et résultats différents, sont refusées à la création ; un doublon est refusé ; deux plages disjointes sur le même libellé sont acceptées.
-- [ ] Une règle `virement` sans condition de montant et une règle de `LIEN_DEPENSE` sont refusées par le modèle.
-- [ ] Une décision prime sur une règle créée ensuite et qui s'appliquerait à la même opération.
-- [ ] Quitter après 3 réponses conserve ces 3 décisions ; le passage suivant ne repose que les questions restantes.
-- [ ] `--sans-questions` et une entrée non interactive ne posent aucune question.
-- [ ] Aucun libellé dans les logs ; aucun appel réseau ni import de `pydantic_ai` dans ce code.
-- [ ] Les tests `donnees_reelles` (avec `--sans-questions`) passent sur juin et juillet quand les données sont présentes.
-- [ ] Vérification complète (ruff, format, mypy, pytest) au vert.
+- [x] Juin : 25 questions au premier passage, réparties comme ci-dessus ; une seule question pour la paire « Velo ».
+- [x] RG-04 : un salaire synthétique reçu le 10/06 sans période produit une question `salaire` à deux choix (`2026-05`, `2026-06`) ; après réponse, `mois_rattachement` vaut le mois choisi, la nature reste `REVENU`, aucune règle n'est proposée, et la question ne revient pas.
+- [x] Le scénario scripté de juin s'exécute de bout en bout avec `InterlocuteurScripte` ; un second passage pose 0 question.
+- [x] Juillet après juin : règles réutilisées et questions RG-14 reposées, comme décrit.
+- [x] RG-06 : tout virement non couvert par le contexte, une décision ou une règle produit une question.
+- [x] RG-07 : les candidates respectent fenêtre, ratio, exclusions et tri ; DECATHLON 409,97 € figure dans la première page pour « Velo » ; le lien est enregistré sur les deux côtés de la paire ; aucune règle n'est proposée.
+- [x] RG-09 et RG-10 : un remboursement reçoit une sous-catégorie ; un hors budget n'en a pas.
+- [x] RG-14 : PayPal et chèques sont toujours posés, même si une règle correspondante existe en base, et aucune règle n'est proposée.
+- [x] Priorité : ICS > libellé exact > préfixe ; condition de montant > sans condition ; préfixe long > préfixe court (tests unitaires sur des règles synthétiques).
+- [x] Conflits : deux règles de même spécificité, à montants recouvrants et résultats différents, sont refusées à la création ; un doublon est refusé ; deux plages disjointes sur le même libellé sont acceptées.
+- [x] Une règle `virement` sans condition de montant et une règle de `LIEN_DEPENSE` sont refusées par le modèle.
+- [x] Une décision prime sur une règle créée ensuite et qui s'appliquerait à la même opération.
+- [x] Quitter après 3 réponses conserve ces 3 décisions ; le passage suivant ne repose que les questions restantes.
+- [x] `--sans-questions` et une entrée non interactive ne posent aucune question.
+- [x] Aucun libellé dans les logs ; aucun appel réseau ni import de `pydantic_ai` dans ce code.
+- [x] Les tests `donnees_reelles` (avec `--sans-questions`) passent sur juin et juillet quand les données sont présentes.
+- [x] Vérification complète (ruff, format, mypy, pytest) au vert.
 
 ## Tests attendus
 
@@ -378,4 +378,26 @@ Aucune nouvelle dépendance : la saisie utilise Rich (déjà présent).
 
 ## Écarts constatés
 
-_À compléter pendant l'implémentation._
+**Organisation du code**
+
+- `Decision` et `Memoire` (décisions et règles passées à `classer_mois`) vivent dans `regles.py` ; `Question` et `Reponse` dans `questions/modeles.py`. L'enchaînement classement, dialogue, reclassement est dans `questions/execution.py` (`classer_et_questionner`), appelé par la CLI et par les tests. `questions/__init__.py` n'importe rien, pour éviter un cycle avec le ledger.
+- `classer_mois(mois, transactions, contexte, memoire=None)` : la mémoire est facultative, les appels de l'étape 5 restent valides.
+- `Interlocuteur` a une troisième méthode, `saisir(invite) -> str`, pour les saisies libres (plage de montant, préfixe), validées et redemandées par le dialogue.
+- `Ledger` expose `regles()`, `decisions()`, `memoire()`, `ajouter_regle()`, `marquer_question_posee()`, `enregistrer_reponse()` et `liens_existants()`.
+
+**Comportements précisés**
+
+- Une question `salaire` a le motif `RG-04` (le commentaire de la colonne `questions.motif` le mentionne).
+- Une opération couverte par une règle `toujours_demander` créée par l'utilisateur a le motif `RG-14`, et aucune règle n'est proposée après la réponse.
+- Alertes : l'alerte RG-04 est calculée en fin de classement et disparaît une fois le mois de paie répondu. L'alerte RG-05 disparaît quand une décision ou une règle classe la dotation (juin : 550 € répondu `perso_conjoint`).
+- Détail d'un classement par règle : `detail` de la règle s'il existe (`dotations.perso_conjoint`), sinon `regles.<n°>`. Le côté TR d'une paire reçoit le même détail suffixé `:contrepartie`, en décision comme en règle.
+- Si un seul côté d'une paire est déjà classé, l'autre côté reçoit sa propre question.
+- RG-07 : « à moins de 31 jours » est lu strictement (écart < 31 jours). À écart égal, tri par date, source puis position.
+- Plage de montant : saisie en valeurs absolues (`500-600`), signée comme l'opération ; elle doit contenir le montant de l'opération.
+- Menus : virement sortant 1. Dotation 2. Épargne 3. Complément 4. Lien 5. Dépense 6. Hors budget ; entrant 1. Dotation 2. Désépargne 3. Complément 4. Lien 5. Remboursement 6. Revenu 7. Hors budget ; opération sortante 1. Dépense 2. Hors budget ; entrante 1. Remboursement 2. Revenu 3. Hors budget. `a` annule un sous-menu et revient au choix précédent.
+
+**Scénario de référence** (`tests/scenarios/juin.py`)
+
+Réponses choisies pour les cas « Autres » : 500 € (01/06) et 400 € (26/06) vers PRENOM2 en complément ; Etsy 2,90 € en revenu ; 100 € (TR, 02/06), −50 € (04/06), +250 € de PRENOM2 (15/06) et +9,95 € depuis BoursoBank en hors budget ; cotisation carte 144 € et remboursement de cotisation X9817 en frais bancaires ; avoir X9817 81 € et PayPal en achats divers. Ce sont des réponses de test sur les fixtures, pas des décisions sur tes données : le premier run réel les posera à nouveau.
+
+**Valeurs de juillet figées** (fixtures, après le scénario de juin) : 16 questions, 10 virements et 6 opérations ; Spotifion et Orange classés par règle ; 2 PayPal et le chèque de 18,45 € posés (RG-14).

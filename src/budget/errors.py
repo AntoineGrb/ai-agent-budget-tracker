@@ -43,3 +43,7 @@ class ConfigError(BudgetError):
 
 class LedgerError(BudgetError):
     """Base SQLite illisible ou de version inconnue."""
+
+
+class RegleError(BudgetError):
+    """Règle apprise invalide ou en conflit avec une règle existante."""

@@ -1,6 +1,7 @@
 """Interface en ligne de commande `budget`."""
 
 import re
+import sys
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -11,13 +12,16 @@ from rich.console import Console
 from rich.table import Table
 
 from budget import __version__
-from budget.classement import ResultatClassement, classer_mois
+from budget.classement import ResultatClassement
+from budget.classement.moteur import est_paiement_carte
 from budget.config import charger_contexte
-from budget.errors import BudgetError, ConfigError, ControleError
+from budget.errors import BudgetError, ConfigError
 from budget.importation import importer_mois
 from budget.ledger import Ledger
 from budget.models import MOTIF_MOIS, Nature, Source, Transaction
 from budget.montants import formater_montant, formater_pourcentage
+from budget.questions.dialogue import InterlocuteurTerminal
+from budget.questions.execution import RapportClassement, classer_et_questionner
 
 app = typer.Typer(help="Budget Tracker agentique : suivi mensuel des dépenses du foyer.")
 config_app = typer.Typer(help="Fichier de contexte du foyer.")
@@ -134,23 +138,51 @@ def classifier(
     contexte: Annotated[
         Path, typer.Option("--contexte", help="Fichier de contexte du foyer.")
     ] = Path("data/contexte.yaml"),
+    sans_questions: Annotated[
+        bool, typer.Option("--sans-questions", help="Classe sans poser de question.")
+    ] = False,
 ) -> None:
-    """Attribue une nature de flux aux opérations du mois classables sans question (étape 5)."""
+    """Classe les opérations du mois : contexte, décisions, règles, puis questions (étapes 5-6)."""
+    interactif = not sans_questions and sys.stdin.isatty()
+    interlocuteur = InterlocuteurTerminal(console) if interactif else None
     try:
         reference = charger_contexte(contexte)
         with Ledger(base) as ledger:
-            if mois not in ledger.mois_importes():
-                raise ControleError(
-                    f"mois {mois} non importé dans {base} : lancer d'abord "
-                    f"`budget import --mois {mois}`"
-                )
-            transactions = ledger.transactions(mois)
-            resultat = classer_mois(mois, transactions, reference)
-            ledger.enregistrer_classement(mois, resultat)
+            rapport = classer_et_questionner(mois, ledger, reference, interlocuteur)
     except BudgetError as erreur:
         console_erreur.print(str(erreur), style="bold red", markup=False, highlight=False)
         raise typer.Exit(code=1) from None
-    _afficher_classement(transactions, resultat)
+    _afficher_classement(rapport.transactions, rapport.resultat)
+    _afficher_bilan(rapport, interactif)
+
+
+def _afficher_bilan(rapport: RapportClassement, interactif: bool) -> None:
+    bilan = rapport.bilan
+    if bilan is not None:
+        etat = " (dialogue interrompu)" if bilan.interrompu else ""
+        console.print(
+            f"Questions : {bilan.a_poser} à poser, {bilan.posees} posées, {bilan.repondues} "
+            f"répondues, {bilan.passees} passées{etat} ; {bilan.regles_creees} règle(s) créée(s)"
+        )
+    if rapport.questions:
+        motif = "" if interactif else " (--sans-questions ou entrée non interactive)"
+        console.print(f"Questions en attente : {len(rapport.questions)}{motif}")
+        console.print(
+            f"Les poser : `budget classify --mois {rapport.resultat.mois}` dans un terminal"
+        )
+    else:
+        console.print("[green]Aucune question en attente[/]")
+    par_id = {t.id: t for t in rapport.transactions}
+    non_classees = sum(1 for c in rapport.resultat.classements if c.nature is None)
+    cartes = sum(
+        1
+        for c in rapport.resultat.classements
+        if c.sous_categorie is None
+        and c.nature in (Nature.DEPENSE, Nature.REMBOURSEMENT)
+        and est_paiement_carte(par_id[c.transaction_id])
+    )
+    console.print(f"Non classées : {non_classees}")
+    console.print(f"Paiements carte sans sous-catégorie (étape 7) : {cartes}")
 
 
 def _afficher_classement(transactions: list[Transaction], resultat: ResultatClassement) -> None:
@@ -181,7 +213,7 @@ def _afficher_classement(transactions: list[Transaction], resultat: ResultatClas
         repartition.add_section()
     console.print(repartition)
 
-    tableau = Table(title=f"Opérations non classées ({len(non_classees)}) : questions à l'étape 6")
+    tableau = Table(title=f"Opérations non classées ({len(non_classees)})")
     tableau.add_column("Source", no_wrap=True)
     tableau.add_column("Date", no_wrap=True)
     tableau.add_column("Type", no_wrap=True, overflow="ellipsis", max_width=24)

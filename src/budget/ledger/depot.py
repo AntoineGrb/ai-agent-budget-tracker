@@ -1,7 +1,7 @@
 """Écriture et lecture des transactions dans le ledger SQLite."""
 
 import sqlite3
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -13,9 +13,12 @@ from pydantic import BaseModel, ConfigDict
 from budget.categories import SousCategorie
 from budget.classement.modeles import Classement, OrigineClassement, ResultatClassement
 from budget.errors import ControleError, LedgerError
+from budget.ledger import memoire
 from budget.ledger.migrations import appliquer_migrations, version
 from budget.models import Nature, Source, Transaction
 from budget.montants import depuis_centimes, en_centimes
+from budget.questions.modeles import Question
+from budget.regles import Decision, Memoire, Regle
 
 _COLONNES = (
     "id",
@@ -287,6 +290,50 @@ class Ledger:
             self._connexion.execute("ROLLBACK")
             raise
         self._connexion.execute("COMMIT")
+
+    # Mémoire des réponses (spec 06) ------------------------------------------------------------
+
+    def _en_transaction[T](self, action: Callable[[], T]) -> T:
+        self._connexion.execute("BEGIN IMMEDIATE")
+        try:
+            resultat = action()
+        except BaseException:
+            self._connexion.execute("ROLLBACK")
+            raise
+        self._connexion.execute("COMMIT")
+        return resultat
+
+    def regles(self) -> list[Regle]:
+        """Toutes les règles apprises, actives ou non, par numéro croissant."""
+        return memoire.lire_regles(self._connexion)
+
+    def decisions(self) -> dict[str, Decision]:
+        return memoire.lire_decisions(self._connexion)
+
+    def memoire(self) -> Memoire:
+        return Memoire(decisions=self.decisions(), regles=self.regles())
+
+    def ajouter_regle(self, regle: Regle) -> Regle:
+        """Ajoute une règle hors dialogue ; `RegleError` en cas de conflit ou de doublon."""
+        return self._en_transaction(lambda: memoire.inserer_regle(self._connexion, regle))
+
+    def marquer_question_posee(self, question: Question) -> int:
+        return self._en_transaction(
+            lambda: memoire.marquer_question_posee(self._connexion, question)
+        )
+
+    def enregistrer_reponse(
+        self, question: Question, decisions: Sequence[Decision], regle: Regle | None
+    ) -> Regle | None:
+        """Écrit une réponse immédiatement et atomiquement ; renvoie la règle créée, numérotée."""
+        return self._en_transaction(
+            lambda: memoire.enregistrer_reponse(self._connexion, question, decisions, regle)
+        )
+
+    def liens_existants(self) -> set[str]:
+        """Dépenses déjà liées à un virement (RG-07)."""
+        requete = "SELECT DISTINCT lien_id FROM decisions WHERE lien_id IS NOT NULL"
+        return {str(ligne[0]) for ligne in self._connexion.execute(requete)}
 
     # Lecture ----------------------------------------------------------------------------------
 

@@ -100,6 +100,9 @@ def test_classify_succes_et_rejeu(tmp_path: Path) -> None:
     assert premier.exit_code == 0, premier.output
     assert "Natures de flux : 2026-06" in premier.output
     assert "Opérations non classées (26)" in premier.output
+    assert (
+        "Questions en attente : 25 (--sans-questions ou entrée non interactive)" in premier.output
+    )
     assert "Charges fixes (RG-18)" in premier.output
     assert "dotation perso_conjoint non trouvée" in premier.output
     assert "Virements internes appariés : 2" in premier.output
@@ -125,3 +128,18 @@ def test_classify_contexte_absent(tmp_path: Path) -> None:
     resultat = runner.invoke(app, [*arguments, "--contexte", str(tmp_path / "absent.yaml")])
     assert resultat.exit_code == 1
     assert "introuvable" in resultat.output
+
+
+def test_classify_sans_questions(tmp_path: Path) -> None:
+    base = tmp_path / "budget.sqlite"
+    assert _importer(base).exit_code == 0
+    arguments = ["classify", "--mois", "2026-06", "--base", str(base)]
+    resultat = runner.invoke(
+        app, [*arguments, "--contexte", str(EXEMPLE_CONTEXTE), "--sans-questions"]
+    )
+    assert resultat.exit_code == 0, resultat.output
+    assert "Questions en attente : 25" in resultat.output
+    assert "Paiements carte sans sous-catégorie (étape 7) : 105" in resultat.output
+    with Ledger(base) as ledger:
+        assert ledger.decisions() == {}
+        assert ledger.regles() == []
