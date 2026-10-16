@@ -1,4 +1,4 @@
-# Spec 08 — Agrégats et agent synthèse
+# Spec 08 — Dépenses par catégorie et agent synthèse
 
 | Champ | Valeur |
 | --- | --- |
@@ -6,212 +6,164 @@
 | Type | Code (Claude Code) |
 | Complexité | Simple à moyenne |
 | Estimation | 1 session |
-| Prérequis | Spec 07 terminée |
+| Prérequis | Recadrage d'octobre 2026 terminé (`docs/cadrage.md`, étape R) |
+
+> Spec réécrite le 16 octobre 2026 après le recadrage. Elle remplace la version qui reposait sur les natures de flux, les enveloppes, les dotations et les charges fixes. Rien de cela n'existe plus dans le code.
 
 ## Objectif
 
-Calculer par le code, pour un mois, tous les indicateurs du cadrage §8 : vue joint, vue perso, catégories, épargne et historique sur 12 mois. Appliquer les contrôles bloquants qui précèdent toute publication (§11). Faire ensuite commenter ces chiffres par l'agent synthèse, qui ne calcule rien. Le résultat est enregistré pour la publication de l'étape 9.
+Pour un mois classé, le code calcule les dépenses comptées par catégorie, séparément pour la vue joint et la vue perso. Il les compare au budget de chaque catégorie (s'il est renseigné) et à la moyenne des trois mois précédents. Il ajoute l'évolution sur 12 mois et les plus grosses dépenses du mois. Avant tout calcul, des contrôles bloquants vérifient que le mois est entièrement classé.
 
-À la fin de l'étape, sur les fixtures et après les scénarios des specs 06 et 07, `budget synthese --mois 2026-06` affiche un dépassement de 3 471,37 € de l'enveloppe joint et de 556,46 € de l'enveloppe perso, puis le commentaire structuré de l'agent.
+L'agent synthèse reçoit ces chiffres déjà calculés et rédige un court commentaire. Il ne calcule rien. Le résultat est enregistré en base pour la publication de l'étape 9.
+
+À la fin de l'étape, sur les fixtures et après le scénario de référence (`tests/scenarios/reference.py`), `budget synthese --mois 2026-06` affiche 7 566,46 € de dépenses joint et 1 322,86 € de dépenses perso, la répartition par catégorie, puis le commentaire de l'agent.
 
 ## Références cadrage
 
-- §1 Les trois questions auxquelles répondre chaque mois
-- §4 Natures de flux : effet de chacune sur les indicateurs
-- §5 Structure budgétaire (enveloppes, dotations, charges fixes)
-- §8 Indicateurs, et colonnes de l'onglet Synthèse
-- §9 Agent synthèse : agrégats JSON en entrée, commentaire structuré (points clés, alertes) en sortie, aucun calcul
-- §10 Enveloppes, budgets par sous-catégorie, dépenses annuelles connues, mois particuliers, seuils
-- §11 Contrôles bloquants avant publication, confidentialité
-- RG-04 (mois de paie), RG-07 (lien à une dépense), RG-08 (provision), RG-09 (remboursements), RG-10 (hors budget), RG-11 (investissements TR), RG-15 (exceptionnels), RG-18 (charges fixes)
+- §1 Les trois questions du mois : combien en joint et en perso, quelle catégorie pèse le plus, comment les dépenses évoluent.
+- §4 Imputation : une opération suivie est comptée dans une sous-catégorie, ou non comptée.
+- §5 Deux vues séparées (joint, perso), jamais additionnées.
+- §8 Restitution, §10 Fichier de contexte, §11 Contrôles bloquants et confidentialité.
+- RG-09 (avoirs carte déduits), RG-10 (non compté), RG-19 (débits seulement).
+
+## État du code à l'entrée
+
+Ce qui existe et doit être réutilisé tel quel :
+
+- `classement.classer_mois` et `questions.execution.classer(mois, ledger, contexte)` : classement sans question, enregistré en base.
+- `ResultatClassement.en_attente` : nombre d'opérations suivies ni comptées ni non comptées.
+- `restitution/operations.py` : `depenses_par_categorie(transactions, classements)`, qui renvoie les dépenses comptées en positif, avoirs déduits, par `(Categorie, Compte)`. C'est la base du calcul.
+- `categories.py` : `Categorie`, `SousCategorie`, `categorie_de`, `libelle_complet`.
+- `agents/categoriseur.py` : conventions de l'agent PydanticAI (validateur de sortie, `ModelRetry`, relances, `raison_echec`, `CategorisationError`) ; `agents/confidentialite.py` : `masquer`, `contient_iban`.
+- `cli._categoriseur` : mode dégradé quand la clé API manque.
+- `ledger/migrations.py` : une seule migration (n° 1). Cette étape ajoute la n° 2.
 
 ## Périmètre
 
 **Inclus**
 
-- `agregats/` : calcul pur des indicateurs d'un mois.
-- Contrôles bloquants avant publication.
+- `agregats/` : calcul pur des chiffres d'un mois et contrôles bloquants.
+- Budgets par catégorie, facultatifs, dans `contexte.yaml`.
 - Agent synthèse PydanticAI v2.
-- Migration `0005` : table `syntheses`.
+- Migration n° 2 : table `syntheses`.
 - Commande `budget synthese`.
 
 **Exclus**
 
 - Publication Google Sheets (étape 9), `budget run` (étape 10).
-- Vue consolidée du foyer (hors périmètre du cadrage §2).
-- Agent analyste doté d'outils de lecture du ledger (phase 2).
+- Vue consolidée joint + perso (hors périmètre du cadrage §2).
+- Agent analyste doté d'outils (phase 2).
 
-## Principe
+## Convention
 
-Les agrégats d'un mois sont une fonction pure des transactions, des classements et du contexte. Aucun montant n'est calculé par le LLM : il reçoit les agrégats déjà calculés et les commente. Avant le calcul, `budget synthese` reclasse sans question les mois dont dépendent les agrégats, pour que la projection reflète le contexte et les règles en vigueur.
+Toutes les dépenses sont exprimées en **positif** : `−Σ montant` des opérations comptées. Un avoir carte (montant positif) les réduit (RG-09). Le total d'une catégorie peut donc être négatif si un remboursement dépasse les achats du mois. Les opérations non comptées et les crédits ignorés n'entrent dans aucun total. Tous les montants sont des `Decimal`, jamais des `float`.
 
-Convention des indicateurs : dépenses, dotations, investissements et épargne sont exprimés en **positif** (montants consommés). Un écart à l'enveloppe vaut `consommation − enveloppe` : positif, c'est un dépassement. Tous les montants restent des `Decimal`.
+Un écart vaut `dépense − référence` : positif, c'est un dépassement.
 
-## Effet de chaque nature
+## Contexte : budgets et modèle de synthèse
 
-Pour une opération de montant signé `m` (négatif = sortie) :
+Deux clés facultatives s'ajoutent à `contexte.yaml`, qui reste en `version: 2` (elles sont rétrocompatibles) :
 
-| Nature | Vue joint (`ca_joint`, `ca_cb`) | Vue perso (`tr`) |
-| --- | --- | --- |
-| `DEPENSE` | Charge fixe du contexte (détail `charges_fixes.*`) : charges fixes réelles. Sinon dépenses courantes : `−m` | Dépenses : `−m` |
-| `REMBOURSEMENT` | Déduit de sa sous-catégorie et des dépenses : `−m` (RG-09) | Idem |
-| `LIEN_DEPENSE` | Sous-catégorie de la dépense liée ; `−m` : ajouté s'il sort, déduit s'il entre (RG-07) | Idem |
-| `REVENU` | Revenus du mois de paie `mois_rattachement` (RG-04) | Revenus financiers si détail `RG-11:*`, sinon autres revenus |
-| `DOTATION` | Dotations : sortie planifiée, hors dépenses | Dotation reçue (information) |
-| `PROVISION` | Exclu : reprises et paiements financés sont neutralisés ensemble (RG-08) | — |
-| `EPARGNE` | Épargne ponctuelle ; désépargne si `m > 0` | Investissements : consomment l'enveloppe perso (RG-11) |
-| `COMPLEMENT` | Sortant : complément versé, consomme l'enveloppe. Entrant : dépassement financé (information) | Idem |
-| `HORS_BUDGET` | Listé à part (RG-10) | Idem |
-| `NEUTRALISE` | Exclu (RG-03) | — |
+```yaml
+budgets:                  # facultatif : budget mensuel par vue et par catégorie
+  joint: {courses: 600, restos: 150}
+  perso: {restos: 200}
 
-Interprétation des compléments (cadrage §4 et §5) : un complément versé quitte le compte émetteur hors de toute dotation, il consomme donc son enveloppe ; le compte receveur l'affiche comme un dépassement financé, sans réduire sa propre consommation (« compléments reçus inclus »). Voir les points ouverts.
+llm:
+  modele_categorisation: "anthropic:claude-haiku-4-5"
+  modele_synthese: "anthropic:claude-sonnet-5-5"   # défaut si absent
+```
 
-## Indicateurs
+- Les clés de `budgets.joint` et `budgets.perso` sont des valeurs de `Categorie`. Une catégorie inconnue ou un montant négatif lève `ConfigError` avec le chemin YAML.
+- `contexte.example.yaml` reçoit l'exemple ci-dessus : il sert aux tests golden.
+- `budget config verifier` affiche le nombre de budgets renseignés par vue et le modèle de synthèse.
 
-### Vue joint
+## Chiffres d'un mois (`agregats/`)
 
-| Indicateur | Calcul |
+`calculer_agregats(mois, transactions_par_mois, classements_par_mois, contexte) -> Agregats` est une fonction pure : ni base, ni fichier. `transactions_par_mois` et `classements_par_mois` couvrent les mois importés de M−11 à M.
+
+### Par vue (joint, puis perso)
+
+| Champ | Calcul |
 | --- | --- |
-| `revenus` | Σ `m` des `REVENU` du joint dont `mois_rattachement` vaut M, quel que soit leur mois budgétaire (RG-04) |
-| `revenus_complets` | Vrai si M+1 est importé et classé : un salaire de M reçu début M+1 est alors connu |
-| `dotations` | Σ `−m` des `DOTATION` du joint, avec le détail par dotation |
-| `charges_fixes_attendues`, `charges_fixes_reelles` | Sommes des rapprochements RG-18 du mois (spec 05), avec la liste des charges hors seuil ou absentes |
-| `depenses_courantes` | Σ `−m` des `DEPENSE` hors charges fixes, des `REMBOURSEMENT` et des `LIEN_DEPENSE` du joint |
-| `complements_verses`, `complements_recus` | Σ `−m` des `COMPLEMENT` sortants ; Σ `m` des entrants |
-| `consommation` | `depenses_courantes + complements_verses` |
-| `enveloppe` | `enveloppes.joint_courant` |
-| `ecart` | `consommation − enveloppe` |
-| `exceptionnels` | Σ `−m` des dépenses taggées exceptionnelles (RG-15), et des liens dont la dépense liée l'est |
-| `hors_budget` | Nombre et Σ `m` des `HORS_BUDGET` (RG-10) |
+| `total` | Dépenses comptées de la vue sur le mois |
+| `categories` | Une `LigneCategorie` par catégorie ayant au moins une opération comptée sur M, dans l'ordre de `Categorie` |
+| `non_comptees` | Nombre et somme (en positif) des débits non comptés de la vue, pour information |
+| `plus_grosses` | Les 5 dépenses comptées les plus élevées de la vue (montant absolu décroissant, puis date) |
 
-### Vue perso
+`LigneCategorie` :
 
-| Indicateur | Calcul |
+| Champ | Calcul |
 | --- | --- |
-| `depenses` | Σ `−m` des `DEPENSE`, `REMBOURSEMENT` et `LIEN_DEPENSE` de TR |
-| `investissements` | Σ `−m` des `EPARGNE` de TR : exécutions d'ordres, versements PEA, épargne ponctuelle (RG-11) |
-| `complements_verses`, `complements_recus` | Comme pour le joint |
-| `consommation` | `depenses + investissements + complements_verses` |
-| `enveloppe` | `enveloppes.perso` |
-| `ecart` | `consommation − enveloppe` |
-| `revenus_financiers`, `autres_revenus`, `dotation_recue`, `exceptionnels`, `hors_budget` | Voir le tableau des natures |
+| `categorie` | `Categorie` |
+| `montant` | Dépenses comptées de la catégorie sur M |
+| `nb_operations` | Opérations comptées de la catégorie sur M, avoirs compris |
+| `sous_categories` | `(SousCategorie, montant)` non nuls, par montant décroissant |
+| `budget`, `ecart_budget` | Budget de `contexte.budgets` pour cette vue et cette catégorie, et `montant − budget` ; vides sans budget |
+| `moyenne_3_mois`, `mois_moyenne`, `ecart_moyenne` | Voir ci-dessous |
 
-### Catégories, par vue
+Une catégorie qui a un budget mais aucune dépense sur M apparaît aussi, avec un montant de 0,00 €.
 
-- Montant net d'une sous-catégorie : Σ `−m` de ses `DEPENSE`, `REMBOURSEMENT` et `LIEN_DEPENSE`. Un lien prend la sous-catégorie de sa dépense liée, éventuellement classée le mois précédent. Les charges fixes sont incluses.
-- Pour chaque sous-catégorie : catégorie, nature Fixe ou Pilotable (`categories.nature_de`), montant, dont exceptionnel, nombre d'opérations, budget (`budgets_sous_categories`, s'il est renseigné), écart au budget, moyenne des trois mois précédents hors exceptionnels, écart à cette moyenne.
-- Moyenne : sur les mois classés parmi M−1 à M−3, divisée par le nombre de mois disponibles (1 à 3), arrondie au centime (`ROUND_HALF_UP`) ; vide si aucun mois n'est disponible. Le nombre de mois utilisés est conservé.
-- Pour chaque catégorie : sommes de ses sous-catégories ; budget égal à la somme des budgets renseignés, vide si aucun ne l'est.
-- Classement des pilotables (cadrage §8, question 2) : catégories triées par montant pilotable décroissant (sous-catégories Pilotable uniquement), avec leurs écarts au budget et à la moyenne.
+**Moyenne sur 3 mois** : moyenne des montants de la catégorie sur les mois **classés et complets** (sans opération en attente) parmi M−1, M−2 et M−3. Un mois disponible sans dépense dans la catégorie compte pour 0. La somme est divisée par le nombre de mois disponibles (1 à 3), puis arrondie au centime (`ROUND_HALF_UP`). Sans aucun mois disponible, la moyenne et son écart sont vides, et `mois_moyenne` vaut 0.
 
-### Épargne (onglet Synthèse)
-
-| Indicateur | Calcul |
-| --- | --- |
-| `dotation_provision` | Σ `−m` des `DOTATION` vers la provision : dotation du contexte nommée `provision` (`NOM_DOTATION_PROVISION`) |
-| `investissements` | Ceux de la vue perso |
-| `epargne_ponctuelle` | Σ `−m` des `EPARGNE` sortantes du joint |
-| `desepargne` | Σ `m` des `EPARGNE` entrantes du joint |
-| `nette` | `dotation_provision + investissements + epargne_ponctuelle − desepargne` |
-
-Si aucune dotation du contexte ne s'appelle `provision`, `dotation_provision` vaut 0 et une alerte le signale.
+**Plus grosses dépenses** : chaque élément porte la date d'opération, le montant (positif), la sous-catégorie et `marchand`. `marchand` vaut la clé marchand masquée (`masquer(cle_marchand(...))`) pour un paiement carte, `None` sinon : jamais de libellé de virement ou de prélèvement (cadrage §11).
 
 ### Historique sur 12 mois
 
-Pour chaque mois classé de M−11 à M : dépenses courantes et consommation du joint, écart joint, consommation et écart perso, exceptionnels, et un indicateur `complet` (le mois passe les contrôles bloquants). S'y ajoutent le cumul et le nombre d'exceptionnels sur la période (cadrage §8, question 3). Un mois est un pic si l'un de ses deux écarts est positif.
+`historique` : pour chaque mois importé de M−11 à M, dans l'ordre chronologique, le total joint, le total perso et `complet` (aucune opération en attente). Le mois M y figure.
 
-### Contexte du mois
+### Modèle
 
-Dépenses annuelles connues dont `mois` contient M (nom, montant, sous-catégorie) ; mois particulier de M (sens, motif, montant approximatif) ; alertes du classement par code, celles de RG-18 détaillées par nom de charge.
-
-## Contrôles bloquants avant publication (cadrage §11)
-
-`controler_publication(...)` lève `ControleError` en listant **tous** les manquements : nombre, puis premières occurrences avec fichier, position, date et montant, jamais le libellé ; et la commande à lancer pour les résoudre.
-
-1. Le mois est importé : les contrôles RG-02, RG-03 et Trade Republic sont donc passés.
-2. Chaque opération a une nature.
-3. Chaque `DEPENSE` et `REMBOURSEMENT` a une sous-catégorie ; chaque `LIEN_DEPENSE` pointe vers une dépense classée qui en a une.
-4. Aucun salaire n'attend son mois de paie (RG-04).
-5. Pour chaque vue, la somme des sous-catégories égale les dépenses de la vue, au centime : charges fixes réelles plus dépenses courantes pour le joint, dépenses pour le perso.
-
-Le contrôle 5 vérifie la cohérence du code d'agrégation : s'il échoue, on corrige le calcul, jamais on n'ajoute de tolérance. `budget synthese` refuse de produire une synthèse quand un contrôle échoue ; la publication (étape 9) appelle les mêmes contrôles.
-
-## Modèles (`agregats/modeles.py`)
-
-Tous immuables, `extra="forbid"`, montants en `Montant` (le type `Decimal` du projet, qui refuse les `float`).
+Modèles Pydantic immuables (`frozen=True, extra="forbid"`), montants en `Montant` :
 
 ```python
-class LigneSousCategorie(BaseModel):
-    sous_categorie: SousCategorie
-    nature: NatureDepense
-    montant: Montant
-    dont_exceptionnel: Montant
-    nb_operations: int
-    budget: Montant | None
-    ecart_budget: Montant | None
-    moyenne_3_mois: Montant | None         # hors exceptionnels
-    mois_moyenne: int                      # 0 à 3
-    ecart_moyenne: Montant | None
-
-
 class Agregats(BaseModel):
     mois: str
-    joint: VueJoint                        # indicateurs ci-dessus + categories + pilotables
-    perso: VuePerso
-    epargne: Epargne
+    joint: Vue
+    perso: Vue
     historique: tuple[PointMensuel, ...]
-    exceptionnels_12_mois: Montant
-    nb_exceptionnels_12_mois: int
-    exceptionnels_detail: tuple[DepenseExceptionnelle, ...]   # date, compte, montant, sous-catégorie, marchand
-    depenses_annuelles_du_mois: tuple[DepenseAnnuelle, ...]
-    mois_particulier: MoisParticulier | None
-    alertes: tuple[ResumeAlerte, ...]
 ```
 
-`DepenseExceptionnelle.marchand` vaut la clé marchand masquée pour un paiement carte, `None` sinon.
+## Contrôles bloquants (`agregats/controles.py`)
 
-`calculer_agregats(mois, transactions_par_mois, classements_par_mois, rapprochements, contexte) -> Agregats` ne lit ni base ni fichier.
+`controler_mois(...)` lève `ControleError` en listant **tous** les manquements. Chaque manquement donne le nombre d'opérations en cause, puis les premières (fichier, position, date, montant, jamais le libellé), et la commande à lancer.
+
+1. Le mois est importé. Les contrôles de parsing (RG-02, RG-03, solde TR) sont donc passés.
+2. Le mois est classé et aucune opération n'est en attente (`budget classify --mois AAAA-MM`).
+3. Pour chaque vue, la somme des catégories est égale au total, au centime, et chaque catégorie est égale à la somme de ses sous-catégories.
+
+Le contrôle 3 vérifie le code d'agrégation : s'il échoue, on corrige le calcul, jamais on n'ajoute de tolérance. `budget synthese` refuse de produire une synthèse si un contrôle échoue ; la publication (étape 9) appelle les mêmes contrôles.
 
 ## Agent synthèse (`agents/synthese.py`)
 
-Consulter la documentation PydanticAI v2 comme pour la spec 07, et réutiliser ses conventions (validateur de sortie, relances, `FunctionModel` dans les tests, `ALLOW_MODEL_REQUESTS = False`).
+Consulter le skill `pydantic-ai-v2` et reprendre les conventions du catégoriseur : agent défini au niveau du module, `deps_type`, validateur de sortie, `retries={"output": 2}`, `pydantic_ai.BANNER_ENABLED = False`, `FunctionModel` dans les tests, `models.ALLOW_MODEL_REQUESTS = False` déjà posé par `conftest.py`.
 
-**Entrée** : `EntreeSynthese` = les `Agregats` et un extrait du contexte (enveloppes, budgets renseignés, seuil exceptionnel, dépenses annuelles connues, mois particuliers), sérialisés en JSON, montants en chaînes décimales, jamais en `float`.
+**Entrée** : les `Agregats` et les budgets renseignés, sérialisés en JSON avec les montants en chaînes décimales (`"627.36"`), jamais en `float`. `masquer()` est appliqué au JSON entier en défense en profondeur.
 
-**Confidentialité** :
+**Confidentialité** : seules les clés marchand masquées des paiements carte figurent dans le prompt (autorisées par le cadrage §11). Aucun libellé de virement ou de prélèvement, aucun IBAN, aucun nom.
 
-- aucun libellé d'opération ; seuls les marchands des dépenses exceptionnelles payées par carte, sous forme de clé marchand masquée (des libellés marchands de paiements carte, autorisés par le cadrage §11) ;
-- aucun libellé du contexte (`libelle_contient`, `reprises_libelle_contient`, `periode_regex`) ni nom de dotation ou de salaire : les totaux suffisent ;
-- `masquer()` (spec 07) appliqué au JSON entier, en défense en profondeur ;
-- un test vérifie qu'aucun libellé de transaction hors carte, aucun libellé du contexte et aucun IBAN n'apparaît dans le prompt.
-
-**Sortie**
+**Sortie** :
 
 ```python
-class CommentaireSynthese(BaseModel):          # frozen, extra="forbid"
-    resume: str = Field(max_length=280)        # colonne « Commentaire » de l'onglet Synthèse
+class CommentaireSynthese(BaseModel):  # frozen, extra="forbid"
+    resume: str = Field(max_length=280)                     # une à deux phrases
     points_cles: list[str] = Field(min_length=1, max_length=5)
-    alertes: list[str] = Field(max_length=5)   # dépassements, charges RG-18 hors seuil, revenus incomplets
-    explication_pic: str | None                # obligatoire si un écart est positif
 ```
 
-**Instructions** (en français) : répondre pour le mois aux trois questions du cadrage §1 ; ne citer que des montants présents dans les données ; ne rien calculer ; expliquer un dépassement par les catégories, les dépenses exceptionnelles, les dépenses annuelles connues ou le mois particulier ; style factuel et bref.
+**Instructions** (en français) : répondre pour le mois aux trois questions du cadrage §1, vue joint et vue perso séparées ; citer la catégorie qui pèse le plus et les dépassements de budget ; expliquer une forte hausse par rapport à la moyenne à l'aide des plus grosses dépenses ; ne citer que des montants présents dans les données ; ne rien calculer ; style factuel et bref.
 
-**Validateur de sortie** :
+**Validateur de sortie** : chaque montant en euros cité (`1 234,56 €`, `1 200 €`, `-50 €`) est lu avec `parse_montant`. Sa valeur absolue doit figurer parmi les valeurs absolues des montants de l'entrée. Sinon, `ModelRetry` liste les montants inconnus et rappelle de ne citer que les montants fournis. Les pourcentages ne sont pas contrôlés.
 
-- chaque montant en euros cité (`1 234,56 €`, `1 200 €`, `-50 €`) est lu avec `parse_montant`, et sa valeur absolue doit figurer parmi les valeurs absolues des montants de l'entrée. Sinon `ModelRetry` qui liste les montants inconnus et rappelle de citer uniquement les montants fournis. Les pourcentages ne sont pas contrôlés ;
-- `explication_pic` est renseignée si et seulement si l'écart joint ou l'écart perso est positif.
+**Échec** : après deux relances, ou en cas d'erreur d'API, la synthèse est enregistrée sans commentaire, avec un avertissement qui reprend la cause, sur le modèle de `raison_echec`. L'absence de commentaire ne bloque pas la publication.
 
-Deux relances au plus. Au-delà, la synthèse est enregistrée sans commentaire, avec un avertissement : l'absence de commentaire ne bloque pas la publication.
+**Modèle** : `contexte.llm.modele_synthese`. Ne pas fixer `temperature`. `max_tokens` modeste (2 000).
 
-**Modèle** : `contexte.llm.modele_synthese` (défaut `anthropic:claude-sonnet-5`). Ne pas fixer `temperature`.
-
-## Persistance (migration 0005)
+## Persistance (migration n° 2)
 
 ```sql
 CREATE TABLE syntheses (
     mois          TEXT PRIMARY KEY,
-    empreinte     TEXT NOT NULL,     -- sha256 de l'entrée de l'agent (JSON canonique)
+    empreinte     TEXT NOT NULL,     -- sha256 de l'entrée de l'agent, du modèle et de la version des consignes
     agregats      TEXT NOT NULL,     -- JSON des Agregats, montants en chaînes décimales
     commentaire   TEXT,              -- JSON du CommentaireSynthese ; NULL sans LLM ou après échec
     modele        TEXT,
@@ -220,17 +172,19 @@ CREATE TABLE syntheses (
 );
 ```
 
-L'empreinte est le sha256 du JSON canonique (clés triées) de l'entrée, du nom du modèle et de `VERSION_CONSIGNES_SYNTHESE`. Si elle n'a pas changé et qu'un commentaire existe, il est réutilisé sans appel ; `--regenerer` force un nouvel appel. Les agrégats sont toujours recalculés et réécrits. La publication (étape 9) lit cette table.
+L'empreinte est le sha256 du JSON canonique (clés triées) de l'entrée, du nom du modèle et de `VERSION_CONSIGNES_SYNTHESE`. Si elle n'a pas changé et qu'un commentaire existe, il est réutilisé sans appel ; `--regenerer` force un nouvel appel. Les agrégats sont toujours recalculés et réécrits. Une migration publiée n'est jamais modifiée (CLAUDE.md).
 
 ## CLI
 
 `budget synthese --mois AAAA-MM [--base …] [--contexte …] [--sans-llm] [--regenerer]` :
 
-1. Reclasse sans question les mois importés de M−11 à M+1 (classement de la spec 07, sans interlocuteur ni LLM).
+1. Reclasse sans question les mois importés de M−11 à M (`questions.execution.classer`, sans interlocuteur ni LLM), pour que les chiffres reflètent les règles en vigueur.
 2. Contrôles bloquants sur M : en cas d'échec, message et code 1.
-3. Agrégats ; dans l'historique, un mois qui échoue aux contrôles est marqué incomplet.
-4. Commentaire, réutilisé si l'empreinte n'a pas changé, sauf `--sans-llm` ou clé absente (avertissement).
-5. Enregistrement, puis affichage Rich : vue joint, vue perso, catégories pilotables, épargne, alertes, commentaire.
+3. Agrégats.
+4. Commentaire : réutilisé si l'empreinte n'a pas changé ; pas d'appel avec `--sans-llm` ou si la clé API manque (avertissement, comme pour `classify`).
+5. Enregistrement, puis affichage Rich : par vue, tableau Catégorie · Montant · Budget · Écart budget · Moyenne 3 mois · Écart moyenne, avec une ligne Total ; les plus grosses dépenses ; l'historique ; le commentaire.
+
+`budget classify` n'est pas modifié.
 
 ## Organisation du code
 
@@ -238,55 +192,46 @@ L'empreinte est le sha256 du JSON canonique (clés triées) de l'entrée, du nom
 src/budget/
 ├── agregats/
 │   ├── __init__.py
-│   ├── modeles.py      # Agregats, VueJoint, VuePerso, LigneSousCategorie, Epargne, PointMensuel
+│   ├── modeles.py      # Agregats, Vue, LigneCategorie, PlusGrosseDepense, PointMensuel
 │   ├── calcul.py       # calculer_agregats : fonction pure
-│   └── controles.py    # controler_publication
+│   └── controles.py    # controler_mois
 ├── agents/
 │   └── synthese.py     # EntreeSynthese, CommentaireSynthese, agent, validateur
-└── ledger/
-    └── syntheses.py    # lecture et écriture de la table syntheses
+├── ledger/
+│   └── syntheses.py    # lecture et écriture de la table syntheses
+└── config.py           # + budgets, llm.modele_synthese
 ```
 
-Le `Ledger` expose aussi la lecture des classements rattachés à un mois de paie, tous mois budgétaires confondus (revenus RG-04).
+## Valeurs attendues sur les fixtures
 
-## Valeurs attendues sur les fixtures de juin 2026
+Après le scénario de référence de juin puis celui de juillet (`tests/scenarios/reference.py`), avec `contexte.example.yaml` et les budgets de l'exemple ci-dessus. Les montants par catégorie sont ceux de `DEPENSES` dans `tests/test_bout_en_bout.py`.
 
-Avec `contexte.example.yaml`, après le scénario de la spec 06 et celui de la spec 07 (OliverStore taggé exceptionnel), juillet non importé. Ces valeurs ne dépendent pas des sous-catégories choisies dans le scénario.
+**Juin 2026**
 
-**Vue joint**
-
-| Indicateur | Valeur |
+| Élément | Valeur |
 | --- | --- |
-| Revenus (mois de paie juin) | 5 255,47 € : `GROUPAMA` 2 729,05 € et `PLUME 06/2026` 2 526,42 € ; `revenus_complets` faux. Les 2 303,31 € de `PLUME 05/2026` vont à mai |
-| Dotations | 1 350,00 € : `perso` 500,00 €, `perso_conjoint` 550,00 €, `provision` 300,00 € |
-| Charges fixes attendues / réelles | 2 797,25 € / 2 797,25 €, aucune hors seuil |
-| Dépenses courantes | 3 771,37 € : 52 dépenses hors charges fixes (3 909,16 €), moins 3 remboursements (387,79 €), plus le lien « Velo » (250,00 €) |
-| Compléments versés | 900,00 € (500,00 € et 400,00 €) |
-| Consommation / enveloppe / écart | 4 671,37 € / 1 200,00 € / +3 471,37 € |
-| Exceptionnels | 883,16 € |
-| Hors budget | 9 opérations, +3 234,98 € net |
-| Somme des sous-catégories | 6 568,62 € (charges fixes réelles + dépenses courantes) |
+| Total joint | 7 566,46 € sur 61 opérations ; catégorie la plus lourde : Logement, 3 289,26 € |
+| Total perso | 1 322,86 € sur 59 opérations ; catégorie la plus lourde : Loisirs, 685,69 € |
+| Budgets | Courses joint 627,36 € pour 600 € : +27,36 € ; Restos joint 97,36 € pour 150 € : −52,64 € ; Restos perso 206,05 € pour 200 € : +6,05 € |
+| Moyenne 3 mois | Vide partout : aucun mois classé avant juin (`mois_moyenne` = 0) |
+| Non comptées | Joint 10 opérations, 6 088,17 € ; perso 7 opérations, 61,50 € (17 opérations, 6 149,67 € au total) |
+| Plus grosses, joint | 1 787,46 € Logement › Prêt (05/06) ; 1 071,04 € Logement › Charges & assurances (24/06) ; 883,16 € Achats › Maison, marchand `OLIVERSTORE VILLENEUVE-D'` (01/06) ; 668,24 € Enfants › Garde/scolaire (02/06) ; 393,08 € Achats › Tech, `SUNNY INCH ST JEAN DE VEDAS` (01/06) |
+| Plus grosses, perso | 409,97 € Loisirs › Sport, `DECATHLON` (08/06) ; 90,80 € Transport › Transports en commun (03/06), sans marchand car c'est un prélèvement ; 89,99 € Loisirs › Autre, `GOOGLE*GOOGLE PLAY APP` ; 77,90 € Santé › Autre, `LUNETTESPRTOUS` ; 62,40 € Loisirs › Sorties, `KINEPOLIS MEGA` |
+| Historique | Juin seul si juillet n'est pas importé ; juin puis juillet sinon |
 
-**Vue perso**
+**Juillet 2026**
 
-| Indicateur | Valeur |
+| Élément | Valeur |
 | --- | --- |
-| Dépenses | 994,96 € : 58 dépenses (1 373,86 €), moins 2 remboursements (128,90 €), moins le lien « Velo » reçu (250,00 €) |
-| Investissements | 61,50 € : 6 exécutions d'ordre (46,30 €) et 1 versement PEA (15,20 €) |
-| Consommation / enveloppe / écart | 1 056,46 € / 500,00 € / +556,46 € |
-| Compléments reçus | 0,00 € |
-| Revenus financiers / autres revenus | 11,91 € (bonus 8,54 €, intérêts 2,21 €, dividende 1,16 €) / 2,90 € |
-| Dotation reçue | 500,00 € |
-| Hors budget | 1 opération, +100,00 € |
-| Somme des sous-catégories | 994,96 € |
+| Total joint / perso | 9 404,27 € sur 102 opérations / 1 154,49 € sur 53 opérations |
+| Moyenne 3 mois | Calculée sur juin seul (`mois_moyenne` = 1) : Courses joint 627,36 € pour 757,92 € en juillet, soit +130,56 € ; Logement joint 3 289,26 € pour 4 416,17 €, soit +1 126,91 € |
+| Budgets | Courses joint +157,92 € ; Restos joint +295,58 € ; Restos perso +62,17 € |
+| Catégorie nouvelle | Divers joint 618,45 € (moyenne 0,00 € sur 1 mois, écart +618,45 €) |
+| Plus grosse, joint | 2 659,16 € Logement › Autre (20/07), sans marchand (virement) |
 
-**Épargne** : 300,00 € de dotation provision + 61,50 € d'investissements, sans épargne ponctuelle ni désépargne, soit 361,50 € nets.
+Répartition des non comptées de juin, à retrouver : sur le joint, 2 débits différés (3 527,17 €), 7 virements (2 550,00 €) et la carte `BOURSORAMA BOULOGNE BILLA` (11,00 €) ; sur TR, les 7 investissements. En cas d'écart avec ces tableaux, s'arrêter et le noter dans « Écarts constatés ».
 
-**RG-07** : par rapport à un calcul sans le lien, la sous-catégorie de DECATHLON 409,97 € perd 250,00 € en vue perso (contribution nette du vélo : 159,97 €) et en gagne 250,00 € en vue joint.
-
-**Contrôles** : tous passent après les scénarios ; sans le scénario de la spec 07, le contrôle 3 échoue et cite le nombre de paiements carte sans sous-catégorie.
-
-Les valeurs de juillet (après les scénarios de juin et des réponses de juillet à figer) sont relevées à la première exécution, puis figées, dont la moyenne sur 3 mois calculée sur le seul mois de juin.
+**Contrôles** : tous passent après les scénarios. Juin importé sans aucune réponse : après le reclassement de l'étape 1 de la CLI, le contrôle 2 cite 126 opérations en attente (137 suivies moins 11 classées par les règles fixes) et la commande `budget classify --mois 2026-06`.
 
 ## Dépendances autorisées
 
@@ -294,40 +239,33 @@ Aucune nouvelle dépendance.
 
 ## Critères d'acceptation
 
-- [ ] Valeurs de juin des tableaux ci-dessus, vérifiées par un test golden.
-- [ ] Chaque ligne du tableau « Effet de chaque nature » est couverte par un test synthétique, dont RG-07 (lien sortant ajouté, lien entrant déduit, dépense liée classée le mois précédent), RG-08 (provision exclue), RG-09, RG-10 et RG-11.
-- [ ] RG-04 : un salaire de juin reçu le 02/07 (cas synthétique, juillet importé) compte dans les revenus de juin, et `revenus_complets` devient vrai.
-- [ ] Moyenne sur 3 mois : 0, 1 et 3 mois disponibles ; exceptionnels exclus ; arrondi au centime.
-- [ ] Budgets : sous-catégorie avec et sans budget, budget de catégorie comme somme des budgets renseignés.
-- [ ] Contrôles bloquants : chacun des cinq cas produit une `ControleError` qui cite tous les manquements, sans libellé.
-- [ ] Agent synthèse : un `FunctionModel` qui cite un montant absent des agrégats provoque une relance ; qui omet `explication_pic` alors qu'un écart est positif aussi ; après épuisement des relances, synthèse enregistrée sans commentaire.
-- [ ] Confidentialité : aucun libellé hors carte, aucun libellé du contexte, aucun nom de dotation ni IBAN dans le prompt (test sur les messages capturés).
-- [ ] Empreinte : deux `budget synthese` successifs ne font qu'un appel ; `--regenerer` en force un second ; un changement d'agrégat en provoque un.
+- [ ] Valeurs de juin et de juillet des tableaux ci-dessus, vérifiées par des tests golden (ajoutés à `tests/test_bout_en_bout.py` ou dans `tests/test_agregats.py`).
+- [ ] Avoir carte déduit de sa catégorie (RG-09), non comptées exclues (RG-10), crédits absents (RG-19) : un cas synthétique chacun.
+- [ ] Moyenne sur 3 mois : 0, 1 et 3 mois disponibles, mois en attente exclu, catégorie absente d'un mois comptée pour 0, arrondi au centime.
+- [ ] Budgets : catégorie avec et sans budget, budget sans dépense (montant 0,00 €), catégorie inconnue dans `contexte.yaml` refusée.
+- [ ] Contrôles bloquants : chacun des trois produit une `ControleError` qui cite les manquements, sans libellé.
+- [ ] Agent synthèse : un `FunctionModel` qui cite un montant absent provoque une relance ; après épuisement des relances, synthèse enregistrée sans commentaire et avec un avertissement.
+- [ ] Confidentialité : aucun libellé de virement ou de prélèvement et aucun IBAN dans le prompt (test sur les messages capturés, sur juin des fixtures).
+- [ ] Empreinte : deux `budget synthese` successifs ne font qu'un appel ; `--regenerer` en force un second ; une nouvelle réponse qui change un total en provoque un.
 - [ ] `budget synthese` : code 1 si un contrôle échoue ; affichage complet sinon ; `--sans-llm` sans appel.
-- [ ] Migration 0005 sur une base en version 4.
+- [ ] Migration n° 2 appliquée sur une base en version 1, sans perte.
 - [ ] Aucun `float` dans les agrégats ni dans le JSON envoyé (test récursif sur les types).
-- [ ] Les tests `donnees_reelles` (sans LLM) calculent juin et juillet réels quand les données sont présentes et que les questions y ont été répondues ; sinon ils vérifient que les contrôles échouent avec un message exploitable.
 - [ ] Vérification complète (ruff, format, mypy, pytest) au vert.
 
 ## Tests attendus
 
+Rester sur le cœur du moteur : pas de test par fonction utilitaire.
+
 | Fichier | Contenu |
 | --- | --- |
-| `test_agregats_natures.py` | Effet de chaque nature, vue par vue, sur des cas synthétiques |
-| `test_agregats_categories.py` | Sous-catégories, liens RG-07, budgets, moyenne sur 3 mois, classement des pilotables |
-| `test_agregats_golden.py` | Valeurs de juin sur les fixtures après les scénarios des specs 06 et 07 |
-| `test_controles_publication.py` | Les cinq contrôles bloquants |
-| `test_agent_synthese.py` | `FunctionModel` : entrée, confidentialité, validateur, relances, échec |
-| `test_syntheses.py` | Persistance, empreinte, réutilisation du commentaire |
-| `test_ledger_migrations.py`, `test_cli.py` (ajouts) | Migration 0005 ; `budget synthese` en succès, en échec de contrôle, `--sans-llm` |
+| `test_agregats.py` | Cas synthétiques (RG-09, RG-10, RG-19, moyenne, budgets) et contrôles bloquants |
+| `test_agent_synthese.py` | `FunctionModel` : confidentialité, validateur, relances, échec, empreinte |
+| `test_bout_en_bout.py` (ajouts) | Valeurs de juin et juillet ; `budget synthese` en succès et en échec de contrôle (via la fonction appelée par la CLI) |
 
 ## Points ouverts
 
-- **Compléments** : l'interprétation ci-dessus (un complément versé consomme l'enveloppe de l'émetteur, un complément reçu est un dépassement financé) est à confirmer au premier run réel. En juin, les deux virements de 500 € et 400 € vers le compte du conjoint, répondus « complément » dans le scénario de test, expliquent l'essentiel du dépassement joint.
-- **Charges du compte perso** (Navigo, Orange) : comptées dans les dépenses perso, faute de charges fixes perso dans le contexte (spec 05, points ouverts).
-- **Dépenses annuelles connues** : elles expliquent un pic dans le commentaire, mais ne lissent pas le budget. Un budget lissé (provision mensuelle des dépenses annuelles) serait une évolution du cadrage.
-- **Modèle de synthèse** : le cadrage retient Claude Sonnet 5 (`anthropic:claude-sonnet-5`). Claude Sonnet 5.5 (`anthropic:claude-sonnet-5-5`) est plus récent, au même tarif (2 $ / 10 $ par million de tokens). Le choix reste dans `contexte.yaml`.
-- **Noms du contexte** : les noms de charges fixes et de dépenses annuelles sont envoyés au LLM. Ils doivent rester neutres (`garde_enfant`, pas un prénom) ; `budget config verifier` pourrait le rappeler.
+- **Modèle de synthèse** : `claude-sonnet-5-5` par défaut. Le choix reste dans `contexte.yaml` ; la clé API doit être rattachée à un workspace (constaté au premier run réel).
+- **Budgets** : à renseigner dans `data/contexte.yaml` après quelques mois, à partir des moyennes affichées.
 
 ## Écarts constatés
 

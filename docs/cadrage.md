@@ -179,7 +179,11 @@ Une question couverte par une règle créée plus tôt dans le même dialogue es
 - À la fin de `budget classify` : les dépenses comptées du mois par catégorie, en vue joint et en vue perso, et le nombre d'opérations encore en attente.
 - `budget export` écrit le CSV du mois. Il contient une ligne par débit et par avoir carte, avec ces colonnes : date d'opération, date de débit, compte, libellé, montant, catégorie, sous-catégorie, comptée (oui ou non) et règle appliquée.
 
-**En attente (étapes 8 à 10)** : totaux sur plusieurs mois, commentaire de l'agent synthèse et publication Google Sheets. Leurs indicateurs seront redéfinis dans la spec 08 à partir de ce périmètre. Pistes : total par catégorie et par mois, écart à un budget par catégorie, évolution sur 12 mois.
+**Étapes 8 à 10 (specs du 16 octobre 2026)**
+
+- **Chiffres du mois**, calculés par le code, vue par vue : total, dépenses par catégorie et sous-catégorie, écart au budget de la catégorie s'il est renseigné, écart à la moyenne des 3 mois précédents, 5 plus grosses dépenses, historique sur 12 mois.
+- **Agent synthèse** : un court commentaire (résumé et points clés) à partir de ces chiffres, sans aucun calcul ; il ne peut citer que des montants fournis.
+- **Google Sheet** : un onglet Synthèse (une ligne par mois, une colonne par catégorie et par vue, le commentaire, un graphique sur 12 mois), et un onglet par mois (opérations filtrables, récapitulatif par catégorie, commentaire, deux graphiques de répartition). Le Sheet est une projection régénérable du ledger.
 
 ## 9. Architecture technique
 
@@ -304,11 +308,16 @@ version: 2
 seuils:
   amazon_auto: 50  # RG-13
 
+budgets:          # facultatif (étape 8) : budget mensuel par vue et par catégorie
+  joint: {courses: 600, restos: 150}
+  perso: {restos: 200}
+
 llm:
   modele_categorisation: "anthropic:claude-haiku-4-5"
+  modele_synthese: "anthropic:claude-sonnet-5-5"   # étape 8 ; défaut si absent
 ```
 
-Au chargement, un modèle Pydantic valide le fichier : une clé inconnue ou un montant mal typé arrête le run avec un message précis. Des budgets par catégorie pourront y être ajoutés avec l'étape 8.
+Au chargement, un modèle Pydantic valide le fichier : une clé inconnue, une catégorie inexistante ou un montant mal typé arrête le run avec un message précis. La clé API Anthropic doit être rattachée à un workspace.
 
 ## 11. Contrôles, tests et confidentialité
 
@@ -358,8 +367,7 @@ Le risque principal n'est pas technique : c'est l'abandon de l'outil s'il demand
 ## 13. Points ouverts
 
 - [ ] Combien de mois d'historique importer à l'initialisation ? => Au moins 6 mois pour commencer, voire 12 si possible.
-- [ ] Budgets par catégorie : à définir avec la spec 08, s'ils sont utiles.
-- [ ] Indicateurs, synthèse et publication (étapes 8 à 10) : à redéfinir à partir de ce périmètre.
+- [ ] Montants des budgets par catégorie : à renseigner après quelques mois, à partir des moyennes observées.
 
 ## 14. Plan de réalisation
 
@@ -372,11 +380,11 @@ Le risque principal n'est pas technique : c'est l'abandon de l'outil s'il demand
 | 5 | Natures de flux : dotations, provision, charges fixes, neutralisations | Fait, puis retiré au recadrage |
 | 6 | Questions dans le terminal et règles apprises | Fait, simplifié au recadrage |
 | 7 | Agent catégoriseur, validation en lot, règles marchand, export CSV | Fait |
-| R | Recadrage : élagage du code, nouvelles catégories, base neuve, nouveau test sur juin et juillet | En cours |
-| 8 | Dépenses par catégorie et agent synthèse | Spec à réécrire |
-| 9 | Publication Google Sheets | En attente |
-| 10 | Run complet, puis import de l'historique | En attente |
+| R | Recadrage : élagage du code, nouvelles catégories, base neuve, nouveau test sur juin et juillet | Fait |
+| 8 | Dépenses par catégorie, budgets et agent synthèse | Spec réécrite |
+| 9 | Publication Google Sheets : Synthèse et onglets mensuels | Spec réécrite |
+| 10 | `budget run`, run réel, puis import de l'historique | Spec réécrite |
 
 **Jalon 1 (étapes 1 à 7 et recadrage)** : juin et juillet classés dans le nouveau périmètre, validés dans le terminal et exportables en CSV. C'est le moment de juger la qualité du classement avant d'investir dans la restitution.
 
-**Jalon 2 (étapes 8 à 10)** : à redéfinir après le jalon 1.
+**Jalon 2 (étapes 8 à 10)** : Sheet publié avec au moins 7 mois, chacun avec son commentaire, historique importé.
