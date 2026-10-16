@@ -16,6 +16,8 @@ uv run budget publish --mois 2026-06    # classeur Excel data/exports/budget_202
 
 Cadrage : `docs/cadrage.md`. Spécifications par étape : `.claude/plan/`.
 
+Déploiement sur un VPS (alias `trun`, `tpush`, `tpull`, `thelp`…) : `docs/deploiement.md`.
+
 ## Démarrage
 
 ```sh
