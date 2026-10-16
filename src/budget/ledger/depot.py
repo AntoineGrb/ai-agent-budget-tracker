@@ -344,6 +344,9 @@ class Ledger:
     def synthese(self, mois: str) -> SyntheseEnregistree | None:
         return syntheses.lire_synthese(self._connexion, mois)
 
+    def syntheses(self) -> list[SyntheseEnregistree]:
+        return syntheses.lire_syntheses(self._connexion)
+
     def enregistrer_synthese(self, synthese: SyntheseEnregistree) -> None:
         self._en_transaction(lambda: syntheses.enregistrer_synthese(self._connexion, synthese))
 

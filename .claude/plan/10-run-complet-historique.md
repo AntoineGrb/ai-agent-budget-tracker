@@ -6,7 +6,7 @@
 | Type | Organisationnel, précédé d'une courte partie code (Claude Code) |
 | Complexité | Simple |
 | Estimation | 1 session de code, puis le temps des runs et des réponses |
-| Prérequis | Specs 08 et 09 terminées ; Préparation de la spec 09 faite ; `.env` complet (`ANTHROPIC_API_KEY` rattachée à un workspace, `GOOGLE_APPLICATION_CREDENTIALS`, `BUDGET_SPREADSHEET_ID`) ; extractions réelles dans `data/raw/` |
+| Prérequis | Specs 08 et 09 terminées ; `.env` complet (`ANTHROPIC_API_KEY` rattachée à un workspace) ; extractions réelles dans `data/raw/` |
 
 > Spec réécrite le 16 octobre 2026 après le recadrage : plus de bloc « exceptionnels », plus de journal `decisions.md`, plus d'alertes de charges fixes ni de dotations.
 
@@ -19,7 +19,7 @@ L'étape a deux parties, dans cet ordre :
 - **A. Code** (Claude Code) : `budget run`, test de bout en bout étendu, contrôle de traçabilité des règles de gestion, mode d'emploi mensuel.
 - **B. Organisationnel** (utilisateur, poste local) : runs réels, validation, récupération et import de l'historique.
 
-À la fin de l'étape (jalon 2), le Sheet est publié avec au moins 7 mois, chacun avec son commentaire, et le nombre de questions par mois décroît.
+À la fin de l'étape (jalon 2), le classeur Excel est publié avec au moins 7 mois, chacun avec son commentaire, et le nombre de questions par mois décroît.
 
 ## Références cadrage
 
@@ -48,7 +48,7 @@ Pour chaque mois, dans l'ordre chronologique :
 1. `import` : idempotent, un mois déjà importé à l'identique n'ajoute rien (RG-16).
 2. `classify` avec les questions, puis la validation en lot, dans le terminal.
 3. S'il reste des opérations en attente (question passée, marchand non validé) : arrêt avant la synthèse, avec le décompte et la commande à relancer. Code 1.
-4. `synthese`, puis `publish` (ou `--simulation`).
+4. `synthese`, puis `publish`.
 
 Les fonctions existantes sont réutilisées telles quelles ; `budget run` n'ajoute que l'enchaînement et un récapitulatif final (mois traités, questions posées, règles créées, appels aux deux agents, publication). Avec `--depuis` et `--jusqu-a`, le premier mois en échec ou incomplet arrête la boucle ; relancer la même commande reprend là où elle s'est arrêtée, puisque chaque étape est idempotente. Sans terminal interactif, aucune question n'est posée : le run s'arrête à l'étape 3 dès qu'une opération reste en attente.
 
@@ -57,7 +57,7 @@ Les fonctions existantes sont réutilisées telles quelles ; `budget run` n'ajou
 Étendre `tests/test_bout_en_bout.py`, sans réseau (`FunctionModel` pour les deux agents, `ClasseurMemoire`) :
 
 - `budget run --depuis 2026-06 --jusqu-a 2026-07 --simulation` sur les fixtures, avec les réponses de `tests/scenarios/reference.py` ;
-- comparaison avec des goldens sous `tests/golden/` : `export_2026-07.csv`, `agregats_2026-07.json`, `commentaire_2026-07.json`, `publication_2026-07.json` (ce dernier vient de la spec 09).
+- comparaison avec des goldens sous `tests/golden/` : `export_2026-07.csv`, `agregats_2026-07.json`, `commentaire_2026-07.json` ; la publication est couverte par `tests/test_publication.py` (spec 09), sans golden : un `.xlsx` n'est pas comparable octet à octet.
 
 Les goldens se régénèrent par une variable d'environnement (`BUDGET_GOLDEN=regenerer uv run pytest tests/test_bout_en_bout.py`). Toute régénération est justifiée dans le message de commit, avec le diff attendu.
 
@@ -77,20 +77,20 @@ Le `README.md` reçoit une section « Chaque mois » :
 1. À partir du 1er du mois suivant, déposer les trois extractions dans `data/raw/AAAA-MM/`.
 2. Lancer `uv run budget run --mois AAAA-MM`.
 3. Répondre aux questions, puis valider les cartes (Entrée valide tout, un numéro corrige une ligne).
-4. Vérifier le Sheet.
+4. Vérifier le classeur `data/exports/budget.xlsx` dans Excel.
 5. Sauvegarder `data/`.
 
 S'y ajoutent les commandes d'audit (`budget rules list`, `budget rules disable`), l'export CSV, la reprise après interruption (`q` conserve les réponses données ; relancer la même commande), et la mise au point des budgets dans `contexte.yaml`.
 
 ### Critères d'acceptation (partie A)
 
-- [ ] `budget run --mois 2026-06 --simulation` enchaîne les quatre étapes sur les fixtures (interlocuteur scripté et `FunctionModel`).
-- [ ] `budget run` s'arrête avant la synthèse s'il reste une opération en attente, avec code 1 et le décompte ; une seconde exécution reprend sans réimporter ni reposer les questions répondues.
-- [ ] `budget run --depuis 2026-06 --jusqu-a 2026-07` traite les deux mois dans l'ordre et s'arrête au premier mois incomplet.
-- [ ] Test de bout en bout : les goldens de juillet sont identiques ; aucun appel réseau.
-- [ ] Traçabilité : règles conservées couvertes, règles retirées absentes.
-- [ ] README à jour.
-- [ ] Vérification complète (ruff, format, mypy, pytest) au vert.
+- [x] `budget run --mois 2026-06 --simulation` enchaîne les quatre étapes sur les fixtures (interlocuteur scripté et `FunctionModel`).
+- [x] `budget run` s'arrête avant la synthèse s'il reste une opération en attente, avec code 1 et le décompte ; une seconde exécution reprend sans réimporter ni reposer les questions répondues.
+- [x] `budget run --depuis 2026-06 --jusqu-a 2026-07` traite les deux mois dans l'ordre et s'arrête au premier mois incomplet.
+- [x] Test de bout en bout : les goldens de juillet sont identiques ; aucun appel réseau.
+- [x] Traçabilité : règles conservées couvertes, règles retirées absentes.
+- [x] README à jour.
+- [x] Vérification complète (ruff, format, mypy, pytest) au vert.
 
 ## B. Partie organisationnelle (poste local)
 
@@ -107,7 +107,7 @@ Juin a déjà été classé lors de la recette du recadrage : ses questions ne r
 
 ### B2. Validation des résultats
 
-- [ ] Le Sheet contient Synthèse, `2026-07` et `2026-06`, avec bandeaux, filtre et graphiques.
+- [ ] Le classeur contient Synthèse, `2026-07` et `2026-06`, avec bandeaux, filtre et graphiques.
 - [ ] Les totaux par catégorie sont plausibles. Le net des cartes correspond au prélèvement différé (RG-03), ce qui est contrôlé à l'import.
 - [ ] Les opérations non comptées (colonne « Comptée » à `non`) sont bien celles qu'on voulait exclure : virements vers les comptes perso, provision, investissements TR, débits différés.
 - [ ] Le commentaire de l'agent ne cite que des montants présents dans la synthèse et nomme les catégories qui pèsent le plus.
@@ -129,7 +129,7 @@ Point ouvert du cadrage §13 : au moins 6 mois, 12 si possible.
 1. Du plus ancien au plus récent : `uv run budget run --depuis AAAA-MM --jusqu-a 2026-05`. Les règles apprises sur les premiers mois réduisent les questions des suivants.
 2. À chaque arrêt (contrôle en échec, opération en attente), traiter la cause, puis relancer la même commande.
 3. Relever par mois : questions posées, marchands soumis au LLM, règles créées. La charge doit décroître.
-4. Une fois tous les mois importés : `uv run budget publish --mois 2026-07 --tous-les-mois`, pour que chaque onglet mensuel reflète les règles finales.
+4. Une fois tous les mois importés et synthétisés : `uv run budget publish --mois 2026-07`, qui recalcule chaque mois déjà synthétisé : chaque onglet mensuel reflète les règles finales.
 
 **Points de vigilance**
 
@@ -166,3 +166,21 @@ Aucune nouvelle dépendance.
 ## Écarts constatés
 
 À compléter pendant l'exécution (partie A) et les runs réels (partie B).
+
+### Partie A (16 octobre 2026)
+
+- **`--simulation`** : la spec 09 ayant supprimé `publish --simulation` (bascule vers Excel), l'option
+  signifie ici « prépare la publication sans écrire le `.xlsx` » : import, questions, synthèse et
+  contrôles sont réels, seul le fichier n'est pas écrit.
+- **Classeur** : `budget run` écrit un `budget_AAAA-MM.xlsx` par mois traité (spec 09), pas un
+  `data/exports/budget.xlsx` unique. Le dernier mois publié contient tous les mois antérieurs
+  synthétisés.
+- **Étape 4** : `preparer_contenu` (spec 09) synthétise déjà le mois ; `budget run` ne rappelle
+  donc pas `produire_synthese` à part, ce qui éviterait un second appel à l'agent en cas d'échec.
+- **Code** : `src/budget/run.py` (`executer_run`, comptage des appels aux deux agents) et commande
+  `run` dans `cli.py`. Une erreur métier (contrôle, extraction manquante) arrête la boucle, est
+  affichée après le récapitulatif des mois déjà traités, code 1.
+- **Tests** : six tests `budget run` dans `tests/test_bout_en_bout.py`, goldens de juillet dans
+  `tests/golden/` (`BUDGET_GOLDEN=regenerer` pour les refaire), `tests/test_tracabilite.py`.
+  Vérification complète au vert : 337 tests.
+

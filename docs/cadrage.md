@@ -32,7 +32,7 @@ L'outil est lancé à la main et pose ses questions dans le terminal.
 - Mémoire des décisions : chaque réponse peut devenir une règle réutilisable.
 - Dépenses du mois par catégorie dans le terminal, et export CSV.
 
-**En attente (étapes 8 à 10)** : synthèse rédigée par le LLM, publication Google Sheets, import de l'historique.
+**En attente (étapes 8 à 10)** : synthèse rédigée par le LLM, publication dans un classeur Excel, import de l'historique.
 
 **Phase 2**
 
@@ -183,7 +183,7 @@ Une question couverte par une règle créée plus tôt dans le même dialogue es
 
 - **Chiffres du mois**, calculés par le code, vue par vue : total, dépenses par catégorie et sous-catégorie, écart au budget de la catégorie s'il est renseigné, écart à la moyenne des 3 mois précédents, 5 plus grosses dépenses, historique sur 12 mois.
 - **Agent synthèse** : un court commentaire (résumé et points clés) à partir de ces chiffres, sans aucun calcul ; il ne peut citer que des montants fournis.
-- **Google Sheet** : un onglet Synthèse (une ligne par mois, une colonne par catégorie et par vue, le commentaire, un graphique sur 12 mois), et un onglet par mois (opérations filtrables, récapitulatif par catégorie, commentaire, deux graphiques de répartition). Le Sheet est une projection régénérable du ledger.
+- **Classeur Excel** (décision du 16 octobre 2026 : Excel local pour le MVP, à la place de Google Sheets) : un onglet Synthèse (une ligne par mois, une colonne par catégorie et par vue, le commentaire, un graphique sur 12 mois), et un onglet par mois (commentaire, récapitulatif par catégorie, deux graphiques de répartition, opérations filtrables). Le classeur est une projection régénérable du ledger.
 
 ## 9. Architecture technique
 
@@ -200,7 +200,7 @@ flowchart TD
     G --> H["Validation en lot<br/>→ nouvelles règles"]
     F --> I["Dépenses par catégorie<br/>+ export CSV"]
     H --> I
-    I -.-> J["En attente : agent synthèse,<br/>Google Sheets"]
+    I -.-> J["En attente : agent synthèse,<br/>classeur Excel"]
 ```
 
 Seul le nœud G appelle le modèle. Les questions sur les débits hors carte (nœud F) sont posées par du code, sans LLM.
@@ -217,7 +217,7 @@ Seul le nœud G appelle le modèle. Les questions sur les débits hors carte (n�
 | Montants | `decimal.Decimal` | Jamais de `float` pour de l'argent |
 | Stockage | SQLite | Ledger, règles, questions et décisions dans un seul fichier facile à sauvegarder |
 | Contexte | YAML validé par un modèle Pydantic | Éditable à la main, erreurs détectées au chargement |
-| Google Sheets | `gspread` (étape 9, en attente) | Simple pour les valeurs |
+| Classeur Excel | `openpyxl` (étape 9) | Fichier local, sans compte ni réseau ; graphiques et filtres natifs |
 | CLI | Typer et Rich | Commandes et tableaux lisibles dans le terminal |
 
 **Commandes**
@@ -345,7 +345,7 @@ Aucune restitution n'a lieu tant qu'un contrôle échoue, et aucune donnée pers
 - Seuls les libellés marchands des paiements carte sont envoyés au LLM. Les autres débits sont traités par règles ou par question.
 - Défense en profondeur : les IBAN et séquences de 6 chiffres ou plus sont masqués avant tout appel. Un test échoue si un IBAN apparaît dans un prompt.
 - Le repo git contient le code et les jeux de test anonymisés. Le dossier `data/` (extractions, ledger, contexte) est exclu du repo et sauvegardé sur Drive.
-- Les secrets (clé Anthropic, plus tard clé du compte de service Google) sont dans `.env` et ignorés par git.
+- Les secrets (clé Anthropic) sont dans `.env` et ignorés par git.
 
 Le cadrage initial prévoyait une « table de règles versionnée » dans le livrable. Elle contient des libellés personnels : elle est versionnée dans la sauvegarde `data/`, pas dans le repo.
 
@@ -383,9 +383,9 @@ Le risque principal n'est pas technique : c'est l'abandon de l'outil s'il demand
 | 7 | Agent catégoriseur, validation en lot, règles marchand, export CSV | Fait |
 | R | Recadrage : élagage du code, nouvelles catégories, base neuve, nouveau test sur juin et juillet | Fait |
 | 8 | Dépenses par catégorie, budgets et agent synthèse | Fait |
-| 9 | Publication Google Sheets : Synthèse et onglets mensuels | Spec réécrite |
+| 9 | Publication Excel : Synthèse et onglets mensuels | Fait (Excel à la place de Google Sheets) |
 | 10 | `budget run`, run réel, puis import de l'historique | Spec réécrite |
 
 **Jalon 1 (étapes 1 à 7 et recadrage)** : juin et juillet classés dans le nouveau périmètre, validés dans le terminal et exportables en CSV. C'est le moment de juger la qualité du classement avant d'investir dans la restitution.
 
-**Jalon 2 (étapes 8 à 10)** : Sheet publié avec au moins 7 mois, chacun avec son commentaire, historique importé.
+**Jalon 2 (étapes 8 à 10)** : classeur publié avec au moins 7 mois, chacun avec son commentaire, historique importé.

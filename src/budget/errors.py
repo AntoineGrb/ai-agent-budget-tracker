@@ -74,3 +74,7 @@ class SyntheseError(BudgetError):
     def __init__(self, raison: str) -> None:
         super().__init__(raison)
         self.raison = raison
+
+
+class PublicationError(BudgetError):
+    """Publication du classeur Excel impossible (fichier verrouillé)."""

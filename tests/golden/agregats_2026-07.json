@@ -1,0 +1,441 @@
+{
+  "mois": "2026-07",
+  "joint": {
+    "compte": "joint",
+    "total": "9404.27",
+    "categories": [
+      {
+        "categorie": "logement",
+        "montant": "4416.17",
+        "nb_operations": 6,
+        "sous_categories": [
+          {
+            "sous_categorie": "logement.autre",
+            "montant": "2659.16"
+          },
+          {
+            "sous_categorie": "logement.pret",
+            "montant": "1644.32"
+          },
+          {
+            "sous_categorie": "logement.energie",
+            "montant": "68.92"
+          },
+          {
+            "sous_categorie": "logement.charges_assurances",
+            "montant": "43.77"
+          }
+        ],
+        "budget": null,
+        "ecart_budget": null,
+        "moyenne_3_mois": "3289.26",
+        "mois_moyenne": 1,
+        "ecart_moyenne": "1126.91"
+      },
+      {
+        "categorie": "courses",
+        "montant": "757.92",
+        "nb_operations": 20,
+        "sous_categories": [
+          {
+            "sous_categorie": "courses.supermarche",
+            "montant": "729.01"
+          },
+          {
+            "sous_categorie": "courses.commerces",
+            "montant": "28.91"
+          }
+        ],
+        "budget": "600.00",
+        "ecart_budget": "157.92",
+        "moyenne_3_mois": "627.36",
+        "mois_moyenne": 1,
+        "ecart_moyenne": "130.56"
+      },
+      {
+        "categorie": "restos",
+        "montant": "445.58",
+        "nb_operations": 17,
+        "sous_categories": [
+          {
+            "sous_categorie": "restos.restaurant",
+            "montant": "409.96"
+          },
+          {
+            "sous_categorie": "restos.livraison",
+            "montant": "35.62"
+          }
+        ],
+        "budget": "150.00",
+        "ecart_budget": "295.58",
+        "moyenne_3_mois": "97.36",
+        "mois_moyenne": 1,
+        "ecart_moyenne": "348.22"
+      },
+      {
+        "categorie": "loisirs",
+        "montant": "443.30",
+        "nb_operations": 13,
+        "sous_categories": [
+          {
+            "sous_categorie": "loisirs.vacances",
+            "montant": "438.50"
+          },
+          {
+            "sous_categorie": "loisirs.autre",
+            "montant": "4.80"
+          }
+        ],
+        "budget": null,
+        "ecart_budget": null,
+        "moyenne_3_mois": "46.66",
+        "mois_moyenne": 1,
+        "ecart_moyenne": "396.64"
+      },
+      {
+        "categorie": "achats",
+        "montant": "341.83",
+        "nb_operations": 17,
+        "sous_categories": [
+          {
+            "sous_categorie": "achats.vetements",
+            "montant": "165.72"
+          },
+          {
+            "sous_categorie": "achats.autre",
+            "montant": "131.08"
+          },
+          {
+            "sous_categorie": "achats.cadeaux",
+            "montant": "63.22"
+          },
+          {
+            "sous_categorie": "achats.maison",
+            "montant": "-18.19"
+          }
+        ],
+        "budget": null,
+        "ecart_budget": null,
+        "moyenne_3_mois": "2282.22",
+        "mois_moyenne": 1,
+        "ecart_moyenne": "-1940.39"
+      },
+      {
+        "categorie": "enfants",
+        "montant": "735.65",
+        "nb_operations": 1,
+        "sous_categories": [
+          {
+            "sous_categorie": "enfants.garde_scolaire",
+            "montant": "735.65"
+          }
+        ],
+        "budget": null,
+        "ecart_budget": null,
+        "moyenne_3_mois": "974.11",
+        "mois_moyenne": 1,
+        "ecart_moyenne": "-238.46"
+      },
+      {
+        "categorie": "transport",
+        "montant": "1409.77",
+        "nb_operations": 14,
+        "sous_categories": [
+          {
+            "sous_categorie": "transport.voiture",
+            "montant": "1409.77"
+          }
+        ],
+        "budget": null,
+        "ecart_budget": null,
+        "moyenne_3_mois": "59.00",
+        "mois_moyenne": 1,
+        "ecart_moyenne": "1350.77"
+      },
+      {
+        "categorie": "abonnements",
+        "montant": "84.61",
+        "nb_operations": 5,
+        "sous_categories": [
+          {
+            "sous_categorie": "abonnements.logiciels",
+            "montant": "30.13"
+          },
+          {
+            "sous_categorie": "abonnements.internet",
+            "montant": "23.99"
+          },
+          {
+            "sous_categorie": "abonnements.banque",
+            "montant": "15.50"
+          },
+          {
+            "sous_categorie": "abonnements.streaming",
+            "montant": "14.99"
+          }
+        ],
+        "budget": null,
+        "ecart_budget": null,
+        "moyenne_3_mois": "190.49",
+        "mois_moyenne": 1,
+        "ecart_moyenne": "-105.88"
+      },
+      {
+        "categorie": "sante",
+        "montant": "150.99",
+        "nb_operations": 6,
+        "sous_categories": [
+          {
+            "sous_categorie": "sante.pharmacie",
+            "montant": "150.99"
+          }
+        ],
+        "budget": null,
+        "ecart_budget": null,
+        "moyenne_3_mois": "0.00",
+        "mois_moyenne": 1,
+        "ecart_moyenne": "150.99"
+      },
+      {
+        "categorie": "divers",
+        "montant": "618.45",
+        "nb_operations": 3,
+        "sous_categories": [
+          {
+            "sous_categorie": "divers.autre",
+            "montant": "618.45"
+          }
+        ],
+        "budget": null,
+        "ecart_budget": null,
+        "moyenne_3_mois": "0.00",
+        "mois_moyenne": 1,
+        "ecart_moyenne": "618.45"
+      }
+    ],
+    "non_comptees": {
+      "nombre": 6,
+      "montant": "6598.38"
+    },
+    "plus_grosses": [
+      {
+        "date_operation": "2026-07-20",
+        "montant": "2659.16",
+        "sous_categorie": "logement.autre",
+        "marchand": null
+      },
+      {
+        "date_operation": "2026-07-07",
+        "montant": "1471.00",
+        "sous_categorie": "logement.pret",
+        "marchand": null
+      },
+      {
+        "date_operation": "2026-07-09",
+        "montant": "1173.86",
+        "sous_categorie": "transport.voiture",
+        "marchand": "MIDAS CHAMPIGNY SUR MA"
+      },
+      {
+        "date_operation": "2026-07-02",
+        "montant": "735.65",
+        "sous_categorie": "enfants.garde_scolaire",
+        "marchand": null
+      },
+      {
+        "date_operation": "2026-07-10",
+        "montant": "425.56",
+        "sous_categorie": "loisirs.vacances",
+        "marchand": "AIRBNB LUXEMBOURG"
+      }
+    ]
+  },
+  "perso": {
+    "compte": "perso",
+    "total": "1154.49",
+    "categories": [
+      {
+        "categorie": "courses",
+        "montant": "39.97",
+        "nb_operations": 7,
+        "sous_categories": [
+          {
+            "sous_categorie": "courses.supermarche",
+            "montant": "38.47"
+          },
+          {
+            "sous_categorie": "courses.commerces",
+            "montant": "1.50"
+          }
+        ],
+        "budget": null,
+        "ecart_budget": null,
+        "moyenne_3_mois": "30.75",
+        "mois_moyenne": 1,
+        "ecart_moyenne": "9.22"
+      },
+      {
+        "categorie": "restos",
+        "montant": "262.17",
+        "nb_operations": 20,
+        "sous_categories": [
+          {
+            "sous_categorie": "restos.restaurant",
+            "montant": "162.39"
+          },
+          {
+            "sous_categorie": "restos.livraison",
+            "montant": "99.78"
+          }
+        ],
+        "budget": "200.00",
+        "ecart_budget": "62.17",
+        "moyenne_3_mois": "206.05",
+        "mois_moyenne": 1,
+        "ecart_moyenne": "56.12"
+      },
+      {
+        "categorie": "loisirs",
+        "montant": "394.18",
+        "nb_operations": 5,
+        "sous_categories": [
+          {
+            "sous_categorie": "loisirs.vacances",
+            "montant": "236.00"
+          },
+          {
+            "sous_categorie": "loisirs.autre",
+            "montant": "107.98"
+          },
+          {
+            "sous_categorie": "loisirs.sorties",
+            "montant": "50.20"
+          }
+        ],
+        "budget": null,
+        "ecart_budget": null,
+        "moyenne_3_mois": "685.69",
+        "mois_moyenne": 1,
+        "ecart_moyenne": "-291.51"
+      },
+      {
+        "categorie": "achats",
+        "montant": "126.80",
+        "nb_operations": 9,
+        "sous_categories": [
+          {
+            "sous_categorie": "achats.autre",
+            "montant": "99.91"
+          },
+          {
+            "sous_categorie": "achats.vetements",
+            "montant": "26.89"
+          }
+        ],
+        "budget": null,
+        "ecart_budget": null,
+        "moyenne_3_mois": "30.20",
+        "mois_moyenne": 1,
+        "ecart_moyenne": "96.60"
+      },
+      {
+        "categorie": "transport",
+        "montant": "245.80",
+        "nb_operations": 5,
+        "sous_categories": [
+          {
+            "sous_categorie": "transport.train_avion",
+            "montant": "132.00"
+          },
+          {
+            "sous_categorie": "transport.transports_commun",
+            "montant": "90.80"
+          },
+          {
+            "sous_categorie": "transport.voiture",
+            "montant": "23.00"
+          }
+        ],
+        "budget": null,
+        "ecart_budget": null,
+        "moyenne_3_mois": "156.66",
+        "mois_moyenne": 1,
+        "ecart_moyenne": "89.14"
+      },
+      {
+        "categorie": "abonnements",
+        "montant": "85.57",
+        "nb_operations": 7,
+        "sous_categories": [
+          {
+            "sous_categorie": "abonnements.logiciels",
+            "montant": "52.39"
+          },
+          {
+            "sous_categorie": "abonnements.streaming",
+            "montant": "21.19"
+          },
+          {
+            "sous_categorie": "abonnements.internet",
+            "montant": "11.99"
+          }
+        ],
+        "budget": null,
+        "ecart_budget": null,
+        "moyenne_3_mois": "135.61",
+        "mois_moyenne": 1,
+        "ecart_moyenne": "-50.04"
+      }
+    ],
+    "non_comptees": {
+      "nombre": 8,
+      "montant": "249.98"
+    },
+    "plus_grosses": [
+      {
+        "date_operation": "2026-07-20",
+        "montant": "236.00",
+        "sous_categorie": "loisirs.vacances",
+        "marchand": "BKG*BOOKING.COM HOTEL"
+      },
+      {
+        "date_operation": "2026-07-08",
+        "montant": "132.00",
+        "sous_categorie": "transport.train_avion",
+        "marchand": "SNCF-VOYAGEURS"
+      },
+      {
+        "date_operation": "2026-07-13",
+        "montant": "90.80",
+        "sous_categorie": "transport.transports_commun",
+        "marchand": "NAVIGO ANNUEL"
+      },
+      {
+        "date_operation": "2026-07-11",
+        "montant": "79.99",
+        "sous_categorie": "loisirs.autre",
+        "marchand": "PLAYSTATION"
+      },
+      {
+        "date_operation": "2026-07-25",
+        "montant": "51.98",
+        "sous_categorie": "achats.autre",
+        "marchand": "AMAZON PAYMENTS"
+      }
+    ]
+  },
+  "historique": [
+    {
+      "mois": "2026-06",
+      "joint": "7566.46",
+      "perso": "1322.86",
+      "complet": true
+    },
+    {
+      "mois": "2026-07",
+      "joint": "9404.27",
+      "perso": "1154.49",
+      "complet": true
+    }
+  ]
+}

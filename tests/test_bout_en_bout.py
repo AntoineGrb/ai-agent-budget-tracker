@@ -28,14 +28,21 @@ from budget.importation import importer_mois
 from budget.ledger import Ledger
 from budget.libelles import cle_marchand
 from budget.models import Transaction
-from budget.questions.dialogue import InterlocuteurScripte
+from budget.questions.dialogue import QUITTER, InterlocuteurScripte
 from budget.questions.execution import RapportClassement, classer_et_questionner
 from budget.regles import TypeRegle
 from budget.restitution.export_csv import exporter_mois
 from budget.restitution.operations import depenses_par_categorie
 from budget.restitution.synthese import Synthese, produire_synthese
 from tests.conftest import DOSSIER_FIXTURES, EXEMPLE_CONTEXTE
-from tests.scenarios.reference import AppelsCategoriseur, derouler, modele_propositions
+from tests.scenarios.golden import verifier_golden
+from tests.scenarios.publication import AppelsCommentateur, commentateur_reference
+from tests.scenarios.reference import (
+    REPONSES,
+    AppelsCategoriseur,
+    derouler,
+    modele_propositions,
+)
 
 DEPENSES = {
     "2026-06": {
@@ -430,3 +437,155 @@ def test_synthese_refusee_si_operations_en_attente(
     resultat = CliRunner().invoke(cli.app, ["synthese", "--mois", "2026-06", *arguments])
     assert resultat.exit_code == 1
     assert "126 opération(s) en attente" in _sortie(resultat)
+
+
+# Spec 10 : `budget run` -----------------------------------------------------------------------
+
+
+@dataclass
+class Run:
+    resultat: Result
+    base: Path
+    sortie: Path
+    categoriseur: AppelsCategoriseur
+    commentateur: AppelsCommentateur
+
+
+def _lancer_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, arguments: list[str], reponses: list[str]
+) -> Run:
+    """`budget run` sur les fixtures : interlocuteur scripté, FunctionModel, aucun réseau."""
+    monkeypatch.setattr(cli.console, "width", 200)
+    monkeypatch.setattr(cli.console_erreur, "width", 200)
+    appels_categoriseur, appels_commentateur = AppelsCategoriseur(), AppelsCommentateur()
+    interlocuteur = InterlocuteurScripte(reponses) if reponses else None
+    monkeypatch.setattr(cli, "_interlocuteur", lambda sans_questions: interlocuteur)
+    monkeypatch.setattr(
+        cli,
+        "_categoriseur",
+        lambda contexte, sans_llm: CategoriseurLLM(modele_propositions(appels_categoriseur)),
+    )
+    monkeypatch.setattr(
+        cli, "_commentateur", lambda contexte, sans_llm: commentateur_reference(appels_commentateur)
+    )
+    base, sortie = tmp_path / "budget.sqlite", tmp_path / "exports"
+    options = [
+        "--dossier", str(DOSSIER_FIXTURES), "--base", str(base),
+        "--contexte", str(EXEMPLE_CONTEXTE), "--sortie", str(sortie),
+    ]  # fmt: skip
+    resultat = CliRunner().invoke(cli.app, ["run", *arguments, *options])
+    return Run(resultat, base, sortie, appels_categoriseur, appels_commentateur)
+
+
+def test_run_juin_enchaine_les_quatre_etapes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """RG-16 (import), RG-06 (questions), lot carte, synthèse et classeur sur juin."""
+    run = _lancer_run(monkeypatch, tmp_path, ["--mois", "2026-06"], REPONSES["2026-06"])
+    assert run.resultat.exit_code == 0, run.resultat.output
+    sortie = _sortie(run.resultat)
+    assert "2026-06 │ 159 │ 24 │ 77 │ 0 │ oui │ terminé" in sortie
+    assert "Mois traités : 1/1 ; questions posées : 24 ; règles créées : 77" in sortie
+    assert "appels catégoriseur : 1, agent synthèse : 1" in sortie
+    assert (run.sortie / "budget_2026-06.xlsx").is_file()
+    assert len(run.categoriseur.prompts) == 1
+
+
+def test_run_simulation_n_ecrit_pas_le_classeur(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = _lancer_run(
+        monkeypatch, tmp_path, ["--mois", "2026-06", "--simulation"], REPONSES["2026-06"]
+    )
+    assert run.resultat.exit_code == 0, run.resultat.output
+    assert "Simulation : aucun classeur écrit" in _sortie(run.resultat)
+    assert not run.sortie.exists()
+    with Ledger(run.base) as ledger:
+        assert [s.mois for s in ledger.syntheses()] == ["2026-06"]
+
+
+def test_run_s_arrete_avant_la_synthese_puis_reprend_rg16(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sans terminal, 126 opérations restent en attente : code 1, pas de synthèse. Un run
+    interactif reprend sans réimporter (RG-16) et un troisième ne repose aucune question."""
+    sans_terminal = _lancer_run(monkeypatch, tmp_path, ["--mois", "2026-06"], [])
+    assert sans_terminal.resultat.exit_code == 1
+    sortie = _sortie(sans_terminal.resultat)
+    assert "2026-06 │ 159 │ 0 │ 0 │ 126 │ │ arrêté" in sortie
+    assert "126 opération(s) en attente" in sortie
+    assert "`budget run --mois 2026-06`" in sortie
+    assert not sans_terminal.sortie.exists()
+    assert sans_terminal.commentateur.prompts == []
+    with Ledger(sans_terminal.base) as ledger:
+        assert ledger.syntheses() == []
+
+    reprise = _lancer_run(monkeypatch, tmp_path, ["--mois", "2026-06"], REPONSES["2026-06"])
+    assert reprise.resultat.exit_code == 0, reprise.resultat.output
+    assert "2026-06 │ 0 │ 24 │ 77 │ 0 │ oui │ terminé" in _sortie(reprise.resultat)
+
+    encore = _lancer_run(monkeypatch, tmp_path, ["--mois", "2026-06"], [])
+    assert encore.resultat.exit_code == 0, encore.resultat.output
+    sortie = _sortie(encore.resultat)
+    assert "questions posées : 0 ; règles créées : 0" in sortie
+    assert "appels catégoriseur : 0, agent synthèse : 0" in sortie
+
+
+def test_run_s_arrete_au_premier_mois_incomplet(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Juin répondu, `q` à la première question de juillet : août n'est pas touché."""
+    run = _lancer_run(
+        monkeypatch,
+        tmp_path,
+        ["--depuis", "2026-06", "--jusqu-a", "2026-08"],
+        [*REPONSES["2026-06"], QUITTER],
+    )
+    assert run.resultat.exit_code == 1
+    sortie = _sortie(run.resultat)
+    assert "2026-06 │ 159 │ 24 │ 77 │ 0 │ oui │ terminé" in sortie
+    assert "Mois traités : 1/3" in sortie
+    assert "Mois 2026-07 incomplet" in sortie
+    with Ledger(run.base) as ledger:
+        assert ledger.mois_importes() == ["2026-06", "2026-07"]
+
+
+def test_run_refuse_les_options_incoherentes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for arguments in (
+        [],
+        ["--depuis", "2026-06"],
+        ["--mois", "2026-06", "--depuis", "2026-06", "--jusqu-a", "2026-07"],
+        ["--depuis", "2026-07", "--jusqu-a", "2026-06"],
+    ):
+        assert _lancer_run(monkeypatch, tmp_path, arguments, []).resultat.exit_code == 2
+
+
+def test_run_de_bout_en_bout_goldens_de_juillet(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Juin puis juillet en un run : export, agrégats et commentaire de juillet figés."""
+    run = _lancer_run(
+        monkeypatch,
+        tmp_path,
+        ["--depuis", "2026-06", "--jusqu-a", "2026-07"],
+        REPONSES["2026-06"] + REPONSES["2026-07"],
+    )
+    assert run.resultat.exit_code == 0, run.resultat.output
+    assert "Mois traités : 2/2" in _sortie(run.resultat)
+    assert (run.sortie / "budget_2026-07.xlsx").is_file()
+    assert len(run.categoriseur.prompts) == 2  # un appel par mois
+    assert (
+        len(run.commentateur.prompts) == 2
+    )  # juin n'est pas recommenté à la publication de juillet
+
+    with Ledger(run.base) as ledger:
+        chemin, _ = exporter_mois(ledger, "2026-07", tmp_path / "csv")
+        synthese = next(s for s in ledger.syntheses() if s.mois == "2026-07")
+    verifier_golden("export_2026-07.csv", chemin.read_text(encoding="utf-8-sig"))
+    verifier_golden("agregats_2026-07.json", synthese.agregats.model_dump_json(indent=2) + "\n")
+    assert synthese.commentaire is not None
+    verifier_golden(
+        "commentaire_2026-07.json", synthese.commentaire.model_dump_json(indent=2) + "\n"
+    )

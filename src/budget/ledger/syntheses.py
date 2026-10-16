@@ -1,6 +1,7 @@
 """Lecture et écriture de la table `syntheses` : agrégats et commentaire d'un mois (spec 08)."""
 
 import sqlite3
+from collections.abc import Sequence
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -36,8 +37,16 @@ def lire_synthese(connexion: sqlite3.Connection, mois: str) -> SyntheseEnregistr
     ligne = connexion.execute(
         f"SELECT {', '.join(_COLONNES)} FROM syntheses WHERE mois = ?", (mois,)
     ).fetchone()
-    if ligne is None:
-        return None
+    return _depuis_ligne(ligne) if ligne is not None else None
+
+
+def lire_syntheses(connexion: sqlite3.Connection) -> list[SyntheseEnregistree]:
+    """Toutes les synthèses enregistrées, dans l'ordre chronologique."""
+    requete = f"SELECT {', '.join(_COLONNES)} FROM syntheses ORDER BY mois"
+    return [_depuis_ligne(ligne) for ligne in connexion.execute(requete)]
+
+
+def _depuis_ligne(ligne: Sequence[object]) -> SyntheseEnregistree:
     v = dict(zip(_COLONNES, ligne, strict=True))
     commentaire, commentee_le = v["commentaire"], v["commentee_le"]
     return SyntheseEnregistree(

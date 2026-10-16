@@ -1,0 +1,170 @@
+Date d'opération;Date de débit;Compte;Libellé;Montant;Catégorie;Sous-catégorie;Comptée;Règle appliquée
+15/06/2026;31/07/2026;Joint;PICARD SA NEMOURS;-32,92;Courses;Supermarché;oui;Règle n° 102
+17/06/2026;31/07/2026;Joint;AMAZON PAYMENTS PARIS2441535/;-19,99;Achats;Autre;oui;RG-13
+17/06/2026;31/07/2026;Joint;AMAZON PAYMENTS PARIS2441535/;-7,99;Achats;Autre;oui;RG-13
+18/06/2026;31/07/2026;Joint;AMAZON PAYMENTS PARIS2441535/;9,00;Achats;Autre;oui;RG-13
+18/06/2026;31/07/2026;Joint;CARLA'S COFFEE ST MAUR DES FOSS;-17,50;Restos;Restaurant;oui;Règle n° 112
+19/06/2026;31/07/2026;Joint;Buchhaltung Berlin;-30,13;Abonnements;Logiciels;oui;Règle n° 103
+19/06/2026;31/07/2026;Joint;EURL A.L.M. SAVIGNY;-39,00;Achats;Autre;oui;Règle n° 86
+19/06/2026;31/07/2026;Joint;Etsy.com*MrytleStreets Dublin 1;-27,32;Achats;Cadeaux;oui;Règle n° 104
+20/06/2026;31/07/2026;Joint;LES CUISINES DU LA VARENNE ST;-34,50;Restos;Restaurant;oui;Règle n° 94
+20/06/2026;31/07/2026;Joint;LES CUISINES DU LA VARENNE ST;-18,50;Restos;Restaurant;oui;Règle n° 94
+20/06/2026;31/07/2026;Joint;SumUp *Mes 4 moments Saint Maur de;-15,00;Restos;Restaurant;oui;Règle n° 99
+20/06/2026;31/07/2026;Joint;PHARMA MURIERS ST MAUR;-14,86;Santé;Pharmacie;oui;Règle n° 97
+21/06/2026;31/07/2026;Joint;Hotel at Booking.com Amsterdam;-112,20;Loisirs;Vacances;oui;Règle n° 84
+21/06/2026;31/07/2026;Joint;Netflix.com Amsterdam;-7,99;Abonnements;Streaming;oui;Règle n° 119
+21/06/2026;31/07/2026;Joint;CARREFOUR CITY SAINT MAUR D;-9,13;Courses;Supermarché;oui;Règle n° 23
+21/06/2026;31/07/2026;Joint;INTERM CALAO 77 94 SAINT MAUR DE;-7,64;Courses;Supermarché;oui;Règle n° 120
+21/06/2026;31/07/2026;Joint;SumUp *Mes 4 moments Saint Maur de;-21,25;Restos;Restaurant;oui;Règle n° 99
+22/06/2026;31/07/2026;Joint;Hotel at Booking.com Amsterdam;-102,60;Loisirs;Vacances;oui;Règle n° 84
+22/06/2026;31/07/2026;Joint;Hotel at Booking.com Amsterdam;112,20;Loisirs;Vacances;oui;Règle n° 84
+22/06/2026;31/07/2026;Joint;CARREFOUR CITY SAINT MAUR D;-21,43;Courses;Supermarché;oui;Règle n° 23
+23/06/2026;31/07/2026;Joint;MP*CARREFOUR DAC VL SAINT MAUR DES F;-63,75;Courses;Supermarché;oui;Règle n° 83
+23/06/2026;31/07/2026;Joint;MP*CARREFOUR SAINT MAUR DES F;-65,54;Courses;Supermarché;oui;Règle n° 17
+25/06/2026;31/07/2026;Joint;VARENNE CAFE ST MAUR DES FOSS;-16,00;Restos;Restaurant;oui;Règle n° 113
+25/06/2026;31/07/2026;Joint;INTERMARCHE SAINT MAUR DES F;-13,02;Courses;Supermarché;oui;Règle n° 115
+25/06/2026;31/07/2026;Joint;STELLA ST MAUR ST MAUR DES FOSS;-9,76;Restos;Restaurant;oui;Règle n° 117
+26/06/2026;31/07/2026;Joint;UBER *EATS HELP.UBER.C help.uber.com;-6,77;Restos;Livraison;oui;Règle n° 121
+27/06/2026;31/07/2026;Joint;UEP*SUPER U COLOMBELLES;-53,14;Courses;Supermarché;oui;Règle n° 93
+27/06/2026;31/07/2026;Joint;LIBERA 14460 COLOMBELLES;-145,10;Restos;Restaurant;oui;Règle n° 82
+27/06/2026;31/07/2026;Joint;OUISTREHAM HORO 14 OUISTREHAM;-2,00;Transport;Voiture;oui;Règle n° 126
+27/06/2026;31/07/2026;Joint;AMAZON PAYMENTS PARIS2441535/;-57,80;Achats;Maison;oui;Décision
+27/06/2026;31/07/2026;Joint;LA FRENCHIE BULLE CAEN;-26,10;Restos;Restaurant;oui;Règle n° 105
+27/06/2026;31/07/2026;Joint;PHARMAKAIROS CAEN;-25,97;Santé;Pharmacie;oui;Règle n° 106
+28/06/2026;31/07/2026;Joint;PEAGE AUTOROUTE RUEIL MALMAISON;-8,40;Transport;Voiture;oui;Règle n° 118
+28/06/2026;31/07/2026;Joint;SAPN 92 ISSY LES MOUL;-36,00;Transport;Voiture;oui;Règle n° 87
+29/06/2026;31/07/2026;Joint;MP*CARREFOUR SAINT MAUR DES F;-99,35;Courses;Supermarché;oui;Règle n° 17
+29/06/2026;31/07/2026;Joint;LA POSTE.FR PARIS CEDEX 15;-1,52;Achats;Autre;oui;Règle n° 127
+29/06/2026;31/07/2026;Joint;PHARMACIE DU THE ST MAUR DES;-32,80;Santé;Pharmacie;oui;Règle n° 90
+01/07/2026;31/07/2026;Joint;LA MARQUE EN MOINS NEUILLY-SUR-S;-48,32;Achats;Vêtements;oui;Règle n° 95
+01/07/2026;;Joint;WEB TIERS4 Spotifion - Spotifion;-7,00;Abonnements;Streaming;oui;Règle n° 2
+02/07/2026;;Joint;X1091 ST MAUR MOLENE 01/07 19H07 - Société Générale;-300,00;Divers;Autre;oui;Décision
+02/07/2026;;Joint;X1091 ST MAUR MOLENE 01/07 19H06 - Société Générale;-300,00;Divers;Autre;oui;Décision
+02/07/2026;;Joint;CENTRE PAJEMPLOI - URSSAF - PRELEVEMENT PAJEMPLOI YXXXXXXXXXXXXX 02/07/2026;-735,65;Enfants;Garde/scolaire;oui;Règle n° 3
+03/07/2026;31/07/2026;Joint;AMAZON PAYMENTS PARIS2441535/;-29,57;Achats;Autre;oui;RG-13
+03/07/2026;31/07/2026;Joint;UBER *EATS HELP.UBER.COM;-34,36;Restos;Livraison;oui;Règle n° 29
+03/07/2026;31/07/2026;Joint;LA REDOUTE CART ROUBAIX;-47,44;Achats;Vêtements;oui;Règle n° 96
+03/07/2026;31/07/2026;Joint;EURL A.L.M. SAVIGNY;-31,82;Achats;Autre;oui;Règle n° 86
+03/07/2026;31/07/2026;Joint;Eminza Annecy le vieux;-69,96;Achats;Vêtements;oui;Règle n° 89
+03/07/2026;;Joint;ASSU. CAAE PRET HABITAT 07/26;-67,48;Logement;Prêt;oui;Règle n° 4
+04/07/2026;31/07/2026;Joint;UBER *EATS HELP.UBER.COM;5,51;Restos;Livraison;oui;Règle n° 29
+04/07/2026;31/07/2026;Joint;Booking.com Amsterdam;-79,80;Loisirs;Vacances;oui;Règle n° 130
+04/07/2026;31/07/2026;Joint;Booking.com Amsterdam;-109,80;Loisirs;Vacances;oui;Règle n° 130
+04/07/2026;31/07/2026;Joint;NICOLAS 5751 SAINT MAUR DES F;-10,50;Courses;Commerces;oui;Règle n° 116
+04/07/2026;31/07/2026;Joint;MONOPRIX 1357 STMAU2042885/;-60,05;Courses;Supermarché;oui;Règle n° 27
+04/07/2026;31/07/2026;Joint;FLOWBIRD ALF SAINT OUEN SUR;-0,50;Transport;Voiture;oui;Règle n° 129
+04/07/2026;31/07/2026;Joint;AMAZON EU SARL PAYLI2090401/;-8,99;Achats;Autre;oui;RG-13
+04/07/2026;31/07/2026;Joint;PHARMACIE DU THE ST MAUR DES;-28,14;Santé;Pharmacie;oui;Règle n° 90
+04/07/2026;31/07/2026;Joint;LES GAULOIS ST SAINT-MAUR-DES-F;-1,50;Restos;Restaurant;oui;Règle n° 128
+05/07/2026;31/07/2026;Joint;EG*Abritel HA734888533 TENERIFE;-234,00;Loisirs;Vacances;oui;Règle n° 85
+05/07/2026;31/07/2026;Joint;Booking.com Amsterdam;109,80;Loisirs;Vacances;oui;Règle n° 130
+05/07/2026;31/07/2026;Joint;Booking.com Amsterdam;79,80;Loisirs;Vacances;oui;Règle n° 130
+05/07/2026;31/07/2026;Joint;BOUCHERIE JM SAINT MAUR DES F;-18,41;Courses;Commerces;oui;Règle n° 110
+06/07/2026;31/07/2026;Joint;PHARMA MURIERS ST MAUR;-27,74;Santé;Pharmacie;oui;Règle n° 97
+06/07/2026;;Joint;GC RE OCTOPUS ENERGY - Octopus Energy - REF-916C59747ACB48509F;-68,92;Logement;Énergie;oui;Règle n° 6
+06/07/2026;;Joint;Free Telecom - Free - Free HautDebit 3315714287;-23,99;Abonnements;Internet;oui;Règle n° 7
+07/07/2026;31/07/2026;Joint;MP*CARREFOUR SAINT MAUR DES F;-70,00;Courses;Supermarché;oui;Règle n° 17
+07/07/2026;31/07/2026;Joint;MILIBOO CHAVANOD;258,99;Achats;Maison;oui;Règle n° 19
+07/07/2026;31/07/2026;Joint;IKEA CSC E COMM PLAISIR;-183,00;Achats;Maison;oui;Règle n° 21
+07/07/2026;;Joint;AVANSSUR - Direct Assurance - Direct Assurance XXXXXXXXXXXX;-33,13;Transport;Voiture;oui;Décision
+07/07/2026;;Joint;XXXXXXXXXXX ECHEANCE 05/07/26;-1471,00;Logement;Prêt;oui;Règle n° 8
+07/07/2026;;Joint;XXXXXXXXXXX ECHEANCE 05/07/26;-105,84;Logement;Prêt;oui;Règle n° 8
+09/07/2026;31/07/2026;Joint;MIDAS CHAMPIGNY SUR MA;-1173,86;Transport;Voiture;oui;Règle n° 80
+10/07/2026;31/07/2026;Joint;EG*Abritel HA734888533 TENERIFE;234,00;Loisirs;Vacances;oui;Règle n° 85
+10/07/2026;31/07/2026;Joint;EG*Abritel HA734888533 DUBLIN;100,00;Loisirs;Vacances;oui;Règle n° 85
+10/07/2026;31/07/2026;Joint;Airbnb Luxembourg;-425,56;Loisirs;Vacances;oui;Règle n° 81
+10/07/2026;31/07/2026;Joint;Airbnb Luxembourg;-10,34;Loisirs;Vacances;oui;Règle n° 81
+10/07/2026;31/07/2026;Joint;CARREFOUR CITY SAINT MAUR D;-17,88;Courses;Supermarché;oui;Règle n° 23
+10/07/2026;31/07/2026;Joint;MP*CARREFOUR DAC VL SAINT MAUR DES F;-59,71;Courses;Supermarché;oui;Règle n° 83
+11/07/2026;31/07/2026;Joint;SAPN 92 ISSY LES MOUL;-18,00;Transport;Voiture;oui;Règle n° 87
+11/07/2026;31/07/2026;Joint;DYNEFF VIRONVAY;-13,30;Transport;Voiture;oui;Règle n° 114
+12/07/2026;31/07/2026;Joint;Pont de NDIE LE HAVRE CEDEX;-6,10;Transport;Voiture;oui;Règle n° 122
+12/07/2026;31/07/2026;Joint;UEP*SUPER U CAEN;-34,44;Courses;Supermarché;oui;Règle n° 101
+12/07/2026;31/07/2026;Joint;SARL HBS LE HAVRE;-59,45;Restos;Restaurant;oui;Règle n° 92
+13/07/2026;31/07/2026;Joint;HORODATEURS 76 LE HAVRE;-2,00;Transport;Voiture;oui;Règle n° 125
+13/07/2026;31/07/2026;Joint;UEP*OCEANE BIS LE HAVRE;-19,90;Restos;Restaurant;oui;Règle n° 108
+13/07/2026;31/07/2026;Joint;CERTAS ESSOF224 LE HAVRE;-60,58;Transport;Voiture;oui;Règle n° 91
+13/07/2026;31/07/2026;Joint;CARREFOUR.FR MONDEVILLE;-70,50;Courses;Supermarché;oui;Règle n° 88
+13/07/2026;31/07/2026;Joint;CAFE COCOTTE LE HAVRE;-19,50;Restos;Restaurant;oui;Règle n° 109
+13/07/2026;31/07/2026;Joint;Atelier papille le havre;-5,90;Restos;Restaurant;oui;Règle n° 123
+13/07/2026;31/07/2026;Joint;PHARMACIE DES HA LE HAVRE;-21,48;Santé;Pharmacie;oui;Règle n° 107
+13/07/2026;31/07/2026;Joint;CARREFOURCITY LE HAVRE;-17,75;Courses;Supermarché;oui;Règle n° 111
+14/07/2026;31/07/2026;Joint;Pt TANCARVILLE LE HAVRE CEDEX;-2,90;Transport;Voiture;oui;Règle n° 124
+14/07/2026;31/07/2026;Joint;SAPN 92 ISSY LES MOUL;-16,60;Transport;Voiture;oui;Règle n° 87
+14/07/2026;31/07/2026;Joint;CARREFOUR CITY SAINT MAUR D;-18,76;Courses;Supermarché;oui;Règle n° 23
+14/07/2026;31/07/2026;Joint;ESSO31816ROC1 ROSNY 031816/;-36,40;Transport;Voiture;oui;Règle n° 98
+14/07/2026;;Joint;Offre Premium;-15,50;Abonnements;Banque;oui;Règle n° 9
+15/07/2026;31/07/2026;Joint;MP*CARREFOUR SAINT MAUR DES F;-14,00;Courses;Supermarché;oui;Règle n° 17
+15/07/2026;31/07/2026;Joint;RitualsCosmetics Creteil;-35,90;Achats;Cadeaux;oui;Règle n° 100
+15/07/2026;;Joint;PayPal Europe S.a.r.l. et Cie S. - PayPal - XXXXXXXXXXXXX/PAYPAL;-1,20;Achats;Autre;oui;Décision
+16/07/2026;;Joint;4939127;-18,45;Divers;Autre;oui;Décision
+20/07/2026;;Joint;VIR INST vers SAS ETP - NOM climatisation acompte;-2659,16;Logement;Autre;oui;Décision
+21/07/2026;;Joint;PayPal Europe S.a.r.l. et Cie S. - PayPal - XXXXXXXXXXXXX/PAYPAL;-4,80;Loisirs;Autre;oui;Décision
+24/07/2026;;Joint;VIR INST vers PRENOM NOM;-1000,00;;;non;Décision
+24/07/2026;;Joint;WEB MONSIEUR NOM ANT Impots;-1500,00;;;non;Décision
+28/07/2026;;Joint;VIR INST vers PRENOM NOM - Charges persos;-300,00;;;non;Décision
+28/07/2026;;Joint;WEB MONSIEUR NOM ANT Viremen - Virement pour charges;-250,00;;;non;Décision
+29/07/2026;;Joint;0219288 CREDIT AGRICOLE DE PARIS - Crédit Agricole - CREDIT AGRICOLE ASSURANCE HABITATION -ECHEANCE 07/2026 COTISATION DU CONTRAT PACIFICA XXXXXXXXXXX;-43,77;Logement;Charges & assurances;oui;Règle n° 14
+31/07/2026;;Joint;DEPENSES CARTE X1091 AU 16/07/26;-3021,13;;;non;RG-03
+31/07/2026;;Joint;DEPENSES CARTE X1481 AU 16/07/26;-527,25;;;non;RG-03
+02/07/2026;;Perso;BOULANGERIE MURIER;-1,50;Courses;Commerces;oui;Règle n° 66
+02/07/2026;;Perso;UBER *EATS;-27,49;Restos;Livraison;oui;Règle n° 42
+02/07/2026;;Perso;UBER *EATS;-10,00;Restos;Livraison;oui;Règle n° 42
+02/07/2026;;Perso;Savings plan execution US02079K3059 ALPHABET INC.CL.A DL-,001, quantity: 0.031481;-10,00;;;non;RG-11
+02/07/2026;;Perso;Savings plan execution US02079K3059 ALPHABET INC.CL.A DL-,001, quantity: 0.029395;-9,33;;;non;RG-11
+02/07/2026;;Perso;Savings plan execution US02079K3059 ALPHABET INC.CL.A DL-,001, quantity: 0.037777;-12,00;;;non;RG-11
+02/07/2026;;Perso;Versement PEA;-1,32;;;non;RG-11
+02/07/2026;;Perso;JADE HAIR;-23,00;Achats;Autre;oui;Règle n° 134
+02/07/2026;;Perso;CANVA* I04930-16439578;-12,00;Abonnements;Logiciels;oui;Règle n° 143
+04/07/2026;;Perso;UBER *EATS;-0,94;Restos;Livraison;oui;Règle n° 42
+05/07/2026;;Perso;CARREFOUR CITY 2466078;-6,94;Courses;Supermarché;oui;Règle n° 54
+06/07/2026;;Perso;GOOGLE*YOUTUBE;-12,99;Abonnements;Streaming;oui;Règle n° 58
+06/07/2026;;Perso;ARPIBA 2119346;-3,60;Restos;Restaurant;oui;Règle n° 140
+06/07/2026;;Perso;ARPIBA 2119346;-10,80;Restos;Restaurant;oui;Règle n° 140
+07/07/2026;;Perso;L ECLECTIQUE;-29,40;Restos;Restaurant;oui;Règle n° 138
+07/07/2026;;Perso;GUOFA 2;-37,84;Restos;Restaurant;oui;Règle n° 136
+07/07/2026;;Perso;WWW.FOODLES.CO;-20,00;Restos;Livraison;oui;Règle n° 50
+07/07/2026;;Perso;CARREFOUR CITY 2466078;-8,73;Courses;Supermarché;oui;Règle n° 54
+08/07/2026;;Perso;INDIGO NE;-13,60;Transport;Voiture;oui;Règle n° 142
+08/07/2026;;Perso;SNCF-VOYAGEURS;-132,00;Transport;Train/avion;oui;Règle n° 132
+08/07/2026;;Perso;NYX*CARONSERVICE;-1,20;Restos;Restaurant;oui;Règle n° 76
+08/07/2026;;Perso;AMAZON PAYMENTS 2441535;-17,64;Achats;Autre;oui;RG-13
+09/07/2026;;Perso;Savings plan execution US02079K3059 ALPHABET INC.CL.A DL-,001, quantity: 0.019929;-6,22;;;non;RG-11
+09/07/2026;;Perso;LES PETITS PLATS;-41,90;Restos;Restaurant;oui;Règle n° 135
+10/07/2026;;Perso;S A S WRAI;-8,50;Restos;Restaurant;oui;Règle n° 68
+11/07/2026;;Perso;PLAYSTATION;-79,99;Loisirs;Autre;oui;Règle n° 60
+11/07/2026;;Perso;UBER *EATS;-19,49;Restos;Livraison;oui;Règle n° 42
+12/07/2026;;Perso;AMAZON PAYMENTS 2441535;-15,98;Achats;Autre;oui;RG-13
+13/07/2026;;Perso;NAVIGO ANNUEL 4442690;-90,80;Transport;Transports en commun;oui;Règle n° 133
+15/07/2026;;Perso;ESSO31816ROC1 2131616;-3,90;Transport;Voiture;oui;Règle n° 69
+16/07/2026;;Perso;UBER *EATS;-13,67;Restos;Livraison;oui;Règle n° 42
+16/07/2026;;Perso;Savings plan execution US02079K3059 ALPHABET INC.CL.A DL-,001, quantity: 0.005429;-1,76;;;non;RG-11
+17/07/2026;;Perso;UBER* EATS;-7,20;Restos;Livraison;oui;Règle n° 144
+17/07/2026;;Perso;ANTHROPIC* CLAUDE SUB;-21,60;Abonnements;Logiciels;oui;Règle n° 48
+19/07/2026;;Perso;EPSILOON MAGAZINE;-8,20;Abonnements;Streaming;oui;Règle n° 64
+20/07/2026;;Perso;BKG*BOOKING.COM HOTEL;-236,00;Loisirs;Vacances;oui;Règle n° 131
+21/07/2026;;Perso;GOOGLE*GOOGLE ONE;-4,99;Abonnements;Logiciels;oui;Règle n° 71
+22/07/2026;;Perso;CULTURA LA DEFEN;-36,00;Loisirs;Sorties;oui;Règle n° 137
+22/07/2026;;Perso;BK K0028 PUTEAU 4819855;-18,05;Restos;Restaurant;oui;Règle n° 61
+23/07/2026;;Perso;Savings plan execution US02079K3059 ALPHABET INC.CL.A DL-,001, quantity: 0.019619;-5,52;;;non;RG-11
+24/07/2026;;Perso;CARREFOUR CITY 2466078;-14,46;Courses;Supermarché;oui;Règle n° 54
+24/07/2026;;Perso;SP MAISON DE LA SOIE;-26,89;Achats;Vêtements;oui;Règle n° 139
+25/07/2026;;Perso;AMAZON PAYMENTS 2441535;-51,98;Achats;Autre;oui;Décision
+26/07/2026;;Perso;Kinepolis Brussel;-14,20;Loisirs;Sorties;oui;Règle n° 141
+26/07/2026;;Perso;Brussels Foodies;-4,00;Restos;Restaurant;oui;Règle n° 149
+27/07/2026;;Perso;Sepa Direct Debit transfer to ORANGE SA ( );-11,99;Abonnements;Internet;oui;Règle n° 11
+27/07/2026;;Perso;WWW.STOPPUB.FR;-6,50;Achats;Autre;oui;Règle n° 145
+27/07/2026;;Perso;AMAZON PAYMENTS 2441535;39,99;Achats;Autre;oui;RG-13
+27/07/2026;;Perso;VALINSOPAY NL;-1,80;Achats;Autre;oui;Règle n° 150
+28/07/2026;;Perso;Versement PEA;-203,83;;;non;RG-11
+29/07/2026;;Perso;NYX*CARONSERVICE;-1,00;Restos;Restaurant;oui;Règle n° 76
+29/07/2026;;Perso;NYX*CARONSERVICE;-1,20;Restos;Restaurant;oui;Règle n° 76
+29/07/2026;;Perso;NOTION LABS, INC.;-13,80;Abonnements;Logiciels;oui;Règle n° 56
+30/07/2026;;Perso;PLAYSTATION;-27,99;Loisirs;Autre;oui;Règle n° 60
+30/07/2026;;Perso;UBER *EATS;-0,99;Restos;Livraison;oui;Règle n° 42
+30/07/2026;;Perso;JADE HAIR;-23,00;Achats;Autre;oui;Règle n° 134
+31/07/2026;;Perso;CARREFOUR CITY 2466078;-3,99;Courses;Supermarché;oui;Règle n° 54
+31/07/2026;;Perso;SHELL BOUTIQUE 4394727;-5,50;Transport;Voiture;oui;Règle n° 146
+31/07/2026;;Perso;SELECTA 4051721;-4,90;Restos;Restaurant;oui;Règle n° 147
+31/07/2026;;Perso;E.LECLERC;-1,40;Courses;Supermarché;oui;Règle n° 148
+31/07/2026;;Perso;E.LECLERC;-2,95;Courses;Supermarché;oui;Règle n° 148

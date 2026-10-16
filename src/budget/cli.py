@@ -3,7 +3,8 @@
 import os
 import re
 import sys
-from datetime import date
+from collections.abc import Sequence
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Annotated
@@ -20,16 +21,20 @@ from budget.categories import Categorie, libelle_complet
 from budget.config import Contexte, charger_contexte
 from budget.environnement import charger_env
 from budget.errors import BudgetError, ConfigError
+from budget.horloge import horodatage
 from budget.importation import importer_mois
 from budget.ledger import Ledger
 from budget.models import MOTIF_MOIS, Compte
 from budget.montants import formater_montant
+from budget.publication.contenu import ContenuPublication, preparer_contenu
+from budget.publication.excel import construire_classeur, enregistrer
 from budget.questions.dialogue import InterlocuteurTerminal
 from budget.questions.execution import RapportClassement, classer_et_questionner
 from budget.regles import TypeRegle
 from budget.restitution.export_csv import exporter_mois
 from budget.restitution.operations import depenses_par_categorie
 from budget.restitution.synthese import Synthese, produire_synthese
+from budget.run import RapportRun, executer_run, mois_entre
 
 app = typer.Typer(help="Budget Tracker agentique : suivi mensuel des dépenses du foyer.")
 config_app = typer.Typer(help="Fichier de contexte du foyer.")
@@ -91,6 +96,10 @@ def _valider_mois(valeur: str) -> str:
     if not re.fullmatch(MOTIF_MOIS, valeur):
         raise typer.BadParameter(f"{valeur!r} invalide, format attendu AAAA-MM (ex. 2026-06)")
     return valeur
+
+
+def _valider_mois_optionnel(valeur: str | None) -> str | None:
+    return None if valeur is None else _valider_mois(valeur)
 
 
 @app.command("import")
@@ -461,3 +470,185 @@ def exporter(
         console_erreur.print(str(erreur), style="bold red", markup=False, highlight=False)
         raise typer.Exit(code=1) from None
     console.print(f"{nombre} opérations exportées dans {chemin}", highlight=False)
+
+
+@app.command("publish")
+def publier(
+    mois: Annotated[
+        str, typer.Option("--mois", callback=_valider_mois, help="Mois à publier (AAAA-MM).")
+    ],
+    base: Annotated[Path, typer.Option("--base", help="Base SQLite du ledger.")] = Path(
+        "data/budget.sqlite"
+    ),
+    contexte: Annotated[
+        Path, typer.Option("--contexte", help="Fichier de contexte du foyer.")
+    ] = Path("data/contexte.yaml"),
+    sans_llm: Annotated[
+        bool, typer.Option("--sans-llm", help="N'appelle pas l'agent synthèse.")
+    ] = False,
+    sortie: Annotated[Path, typer.Option("--sortie", help="Dossier des classeurs Excel.")] = Path(
+        "data/exports"
+    ),
+) -> None:
+    """Écrit `budget_AAAA-MM.xlsx` : le mois et les mois antérieurs synthétisés, contrôlés."""
+    try:
+        reference = charger_contexte(contexte)
+        commentateur = _commentateur(reference, sans_llm)
+        with Ledger(base) as ledger:
+            contenu = preparer_contenu(mois, ledger, reference, commentateur)
+        maintenant = datetime.fromisoformat(horodatage())
+        chemin = enregistrer(
+            construire_classeur(contenu, maintenant), sortie / f"budget_{mois}.xlsx"
+        )
+    except BudgetError as erreur:
+        console_erreur.print(str(erreur), style="bold red", markup=False, highlight=False)
+        raise typer.Exit(code=1) from None
+    _afficher_publication(contenu)
+    console.print(f"Classeur écrit : {chemin}", highlight=False)
+
+
+def _interlocuteur(sans_questions: bool) -> InterlocuteurTerminal | None:
+    """Terminal interactif, ou `None` : aucune question n'est alors posée."""
+    interactif = not sans_questions and sys.stdin.isatty()
+    return InterlocuteurTerminal(console) if interactif else None
+
+
+@app.command("run")
+def lancer(
+    mois: Annotated[
+        str | None,
+        typer.Option("--mois", callback=_valider_mois_optionnel, help="Mois à traiter (AAAA-MM)."),
+    ] = None,
+    depuis: Annotated[
+        str | None,
+        typer.Option("--depuis", callback=_valider_mois_optionnel, help="Premier mois (AAAA-MM)."),
+    ] = None,
+    jusqu_a: Annotated[
+        str | None,
+        typer.Option("--jusqu-a", callback=_valider_mois_optionnel, help="Dernier mois (AAAA-MM)."),
+    ] = None,
+    dossier: Annotated[
+        Path, typer.Option("--dossier", help="Dossier contenant les sous-dossiers AAAA-MM.")
+    ] = Path("data/raw"),
+    base: Annotated[Path, typer.Option("--base", help="Base SQLite du ledger.")] = Path(
+        "data/budget.sqlite"
+    ),
+    contexte: Annotated[
+        Path, typer.Option("--contexte", help="Fichier de contexte du foyer.")
+    ] = Path("data/contexte.yaml"),
+    sortie: Annotated[Path, typer.Option("--sortie", help="Dossier des classeurs Excel.")] = Path(
+        "data/exports"
+    ),
+    sans_llm: Annotated[
+        bool, typer.Option("--sans-llm", help="N'appelle aucun des deux agents.")
+    ] = False,
+    simulation: Annotated[
+        bool,
+        typer.Option("--simulation", help="Va jusqu'à la publication sans écrire le classeur."),
+    ] = False,
+) -> None:
+    """Enchaîne import, questions, validation des cartes, synthèse et classeur, mois par mois."""
+    if mois is not None and (depuis is not None or jusqu_a is not None):
+        raise typer.BadParameter("--mois exclut --depuis et --jusqu-a")
+    if mois is None and (depuis is None or jusqu_a is None):
+        raise typer.BadParameter("indiquer --mois, ou --depuis et --jusqu-a ensemble")
+    if mois is not None:
+        liste = [mois]
+    else:
+        assert depuis is not None and jusqu_a is not None
+        if depuis > jusqu_a:
+            raise typer.BadParameter(f"--depuis {depuis} postérieur à --jusqu-a {jusqu_a}")
+        liste = mois_entre(depuis, jusqu_a)
+
+    try:
+        reference = charger_contexte(contexte)
+        with Ledger(base) as ledger:
+            rapport = executer_run(
+                liste,
+                dossier,
+                ledger,
+                reference,
+                _interlocuteur(False),
+                _categoriseur(reference, sans_llm),
+                _commentateur(reference, sans_llm),
+                aujourd_hui=date.today(),
+                maintenant=datetime.fromisoformat(horodatage()),
+                sortie=None if simulation else sortie,
+            )
+    except BudgetError as erreur:
+        console_erreur.print(str(erreur), style="bold red", markup=False, highlight=False)
+        raise typer.Exit(code=1) from None
+    _afficher_run(rapport, liste)
+    if not rapport.complet:
+        raise typer.Exit(code=1)
+
+
+def _afficher_run(rapport: RapportRun, demandes: Sequence[str]) -> None:
+    tableau = Table(title="Run")
+    for colonne in ("Mois", "Ajoutées", "Questions", "Règles", "En attente", "Commentaire", "État"):
+        tableau.add_column(colonne, justify="left" if colonne in ("Mois", "État") else "right")
+    for etape in rapport.mois:
+        nouvelles = etape.importe.ajoutees if etape.importe else 0
+        regles = (etape.bilan.regles_creees if etape.bilan else 0) + (
+            etape.bilan_lot.regles_creees if etape.bilan_lot else 0
+        )
+        commentaire = ""
+        if etape.contenu is not None:
+            commentaire = "oui" if etape.contenu.mois[-1].synthese.commentaire else "à régénérer"
+        tableau.add_row(
+            etape.mois,
+            str(nouvelles),
+            str(etape.bilan.posees if etape.bilan else 0),
+            str(regles),
+            str(etape.en_attente),
+            commentaire,
+            "terminé" if etape.termine else "arrêté",
+        )
+    console.print(tableau)
+    traites = sum(1 for etape in rapport.mois if etape.termine)
+    console.print(
+        f"Mois traités : {traites}/{len(demandes)} ; questions posées : "
+        f"{rapport.questions_posees} ; règles créées : {rapport.regles_creees} ; appels "
+        f"catégoriseur : {rapport.appels_categoriseur}, agent synthèse : "
+        f"{rapport.appels_commentateur}"
+    )
+    classeurs = [etape.classeur for etape in rapport.mois if etape.classeur]
+    if classeurs:
+        console.print(f"Classeur écrit : {classeurs[-1]}", highlight=False)
+    elif traites:
+        console.print("Simulation : aucun classeur écrit")
+    if rapport.erreur is not None:
+        console_erreur.print(str(rapport.erreur), style="bold red", markup=False, highlight=False)
+        console_erreur.print(
+            "Traiter la cause, puis relancer la même commande : les mois terminés sont repris "
+            "sans rien ajouter.",
+            highlight=False,
+        )
+        return
+    arret = rapport.arret
+    if arret is not None:
+        console_erreur.print(
+            f"Mois {arret.mois} incomplet : {arret.en_attente} opération(s) en attente. "
+            f"Relancer `budget run --mois {arret.mois}` dans un terminal pour répondre aux "
+            "questions restantes ; les mois suivants n'ont pas été traités.",
+            style="bold red",
+            highlight=False,
+        )
+
+
+def _afficher_publication(contenu: ContenuPublication) -> None:
+    tableau = Table(title="Publication")
+    for colonne in ("Mois", "Joint", "Perso", "Opérations", "Commentaire"):
+        tableau.add_column(
+            colonne, justify="left" if colonne in ("Mois", "Commentaire") else "right"
+        )
+    for publie in contenu.mois:
+        agregats = publie.synthese.agregats
+        tableau.add_row(
+            publie.mois,
+            formater_montant(agregats.joint.total),
+            formater_montant(agregats.perso.total),
+            str(len(publie.operations)),
+            "oui" if publie.synthese.commentaire is not None else "à régénérer",
+        )
+    console.print(tableau)
