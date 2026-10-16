@@ -28,8 +28,10 @@ from budget.questions.execution import RapportClassement, classer_et_questionner
 
 NON_COMPTE = "11"
 
-# Bloc 1 de juin : 23 questions, dont 2 couvertes par une règle créée plus tôt dans le dialogue
+# Bloc 1 de juin : 26 questions, dont 3 Amazon (RG-13) et 2 couvertes par une règle créée plus tôt
 QUESTIONS_JUIN: list[list[str]] = [
+    ["5", "3"],  # 24/05 -218,68 Amazon : Achats › Tech (RG-13, pas de règle)
+    ["5", "6"],  # 25/05 -89,99 Amazon : Achats › Autre (RG-13)
     [NON_COMPTE, "o", "p", "1-1000"],  # 01/06 -500,00 vers PRENOM2 : règle de 1 à 1 000 €
     ["8", "2", "o", ""],  # 01/06 -7,00 Spotifion : Abonnements › Streaming, montant exact
     ["6", "1", "o", ""],  # 02/06 -668,24 Pajemploi : Enfants › Garde/scolaire, règle sur l'ICS
@@ -38,13 +40,14 @@ QUESTIONS_JUIN: list[list[str]] = [
     ["7", "2", "o", "", ""],  # 03/06 -90,80 Navigo (TR) : Transports en commun, libellé exact
     [NON_COMPTE, "n"],  # 04/06 -50,00 virement : non compté, sans règle
     ["1", "3", "o", ""],  # 04/06 -68,92 Octopus Energy : Logement › Énergie, ICS
-    ["5", "5"],  # 04/06 -25,00 PayPal : Achats › Autre (RG-14, pas de règle)
+    ["5", "6"],  # 04/06 -25,00 PayPal : Achats › Autre (RG-14, pas de règle)
     ["8", "1", "o", ""],  # 05/06 -23,99 Free : Abonnements › Internet, ICS
     # 05/06 -1 787,46 prêt : Logement › Prêt, préfixe ; couvre aussi le prêt de 121,89 €
     ["1", "1", "o", "x", "XXXXXXXXXXX ECHEANCE", ""],
+    ["6", "3"],  # 10/06 -78,38 Amazon : Enfants › Autre (RG-13)
     ["8", "4", "o", "", ""],  # 12/06 -15,50 Offre Premium : Abonnements › Banque
     [NON_COMPTE, "n"],  # 15/06 -250,00 « Velo » : le vélo est compté sur TR, où il est payé
-    ["5", "5"],  # 16/06 -1,20 PayPal (RG-14)
+    ["5", "6"],  # 16/06 -1,20 PayPal (RG-14)
     ["4", "4"],  # 22/06 -4,80 PayPal : Loisirs › Autre (RG-14)
     ["1", "2", "o", ""],  # 24/06 -1 071,04 copropriété : Logement › Charges & assurances, ICS
     ["8", "4", "n"],  # 24/06 -144,00 cotisation carte : Abonnements › Banque, sans règle
@@ -57,37 +60,33 @@ QUESTIONS_JUIN: list[list[str]] = [
     [NON_COMPTE, "o", "p", "500-600"],  # 30/06 -550,00 « Virement du mois » : plage
 ]
 
-# Bloc 2 de juin : 65 lignes, 62 groupes marchands puis 3 Amazon (RG-13) en 63 à 65
+# Bloc 2 de juin : 62 groupes marchands
 LOT_JUIN: list[str] = [
     "20", NON_COMPTE,  # BOURSORAMA BOULOGNE BILLA : non compté
     "22", "4", "1",  # RELAY PARIS : Achats › Autre corrigé en Loisirs › Sorties
-    "63", "5", "3",  # AMAZON PAYMENTS 24/05 -218,68 € : Achats › Tech
-    "64", "5", "5",  # AMAZON EU SARL 25/05 -89,99 € : Achats › Autre
-    "65", "6", "3",  # AMAZON PAYMENTS 10/06 -78,38 € : Enfants › Autre
     "",  # Entrée : tout valider
 ]  # fmt: skip
 
-# Bloc 1 de juillet : 11 questions ; prélèvements, prêts, Spotifion et Orange classés par les règles
+# Bloc 1 de juillet : 13 questions, dont 2 Amazon ; prélèvements, prêts, Spotifion et Orange sont
+# classés par les règles de juin
 QUESTIONS_JUILLET: list[list[str]] = [
+    ["5", "2"],  # 27/06 -57,80 Amazon : Achats › Maison (RG-13)
     ["10", "2", "n"],  # 02/07 -300,00 retrait : Divers › Autre, sans règle
     ["10", "2", "n"],  # 02/07 -300,00 second retrait
     ["7", "1", "o", ""],  # 07/07 -33,13 Direct Assurance : Transport › Voiture, ICS
-    ["5", "5"],  # 15/07 -1,20 PayPal (RG-14)
+    ["5", "6"],  # 15/07 -1,20 PayPal (RG-14)
     ["10", "2"],  # 16/07 -18,45 chèque émis (RG-14)
     ["1", "4", "n"],  # 20/07 -2 659,16 acompte climatisation : Logement › Autre
     ["4", "4"],  # 21/07 -4,80 PayPal (RG-14)
     [NON_COMPTE, "n"],  # 24/07 -1 000,00 vers PRENOM : non compté
     [NON_COMPTE, "n"],  # 24/07 -1 500,00 « Impots » vers la provision : non compté
+    ["5", "6"],  # 25/07 -51,98 Amazon (TR) : Achats › Autre (RG-13)
     [NON_COMPTE, "o", ""],  # 28/07 -300,00 « Charges persos » : non compté, montant exact
     [NON_COMPTE, "n"],  # 28/07 -250,00 « Virement pour charges » : non compté
 ]
 
-# Bloc 2 de juillet : 73 lignes, 71 groupes marchands puis 2 Amazon (RG-13) en 72 et 73
-LOT_JUILLET: list[str] = [
-    "72", "5", "2",  # AMAZON PAYMENTS 27/06 -57,80 € : Achats › Maison
-    "73", "5", "5",  # AMAZON PAYMENTS (TR) 25/07 -51,98 € : Achats › Autre
-    "",  # Entrée : tout valider
-]  # fmt: skip
+# Bloc 2 de juillet : 71 groupes marchands
+LOT_JUILLET: list[str] = [""]  # Entrée : tout valider
 
 REPONSES: dict[str, list[str]] = {
     "2026-06": [r for q in QUESTIONS_JUIN for r in q] + LOT_JUIN,

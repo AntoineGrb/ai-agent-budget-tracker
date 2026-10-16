@@ -48,6 +48,7 @@ class SousCategorie(StrEnum):
     ACHATS_MAISON = "achats.maison"
     ACHATS_TECH = "achats.tech"
     ACHATS_CADEAUX = "achats.cadeaux"
+    ACHATS_CULTURE = "achats.culture"
     ACHATS_AUTRE = "achats.autre"
     ENFANTS_GARDE_SCOLAIRE = "enfants.garde_scolaire"
     ENFANTS_ACTIVITES = "enfants.activites"
@@ -95,7 +96,7 @@ _METADONNEES: dict[SousCategorie, tuple[str, str]] = {
     _SC.RESTOS_RESTAURANT: ("Restaurant", "restaurants, cafés, snacks, fast-food"),
     _SC.RESTOS_LIVRAISON: ("Livraison", "repas livrés"),
     _SC.RESTOS_AUTRE: ("Autre", "distributeurs, cantines d'entreprise"),
-    _SC.LOISIRS_SORTIES: ("Sorties", "cinéma, musées, spectacles, librairie"),
+    _SC.LOISIRS_SORTIES: ("Sorties", "cinéma, musées, spectacles"),
     _SC.LOISIRS_SPORT: ("Sport", "articles de sport, clubs, salles"),
     _SC.LOISIRS_VACANCES: ("Vacances", "hébergement, locations de vacances"),
     _SC.LOISIRS_AUTRE: ("Autre", "jeux, applications"),
@@ -103,7 +104,8 @@ _METADONNEES: dict[SousCategorie, tuple[str, str]] = {
     _SC.ACHATS_MAISON: ("Maison", "meubles, déco, équipement de la maison"),
     _SC.ACHATS_TECH: ("Tech", "informatique, téléphonie, électronique"),
     _SC.ACHATS_CADEAUX: ("Cadeaux", "cadeaux offerts, cosmétiques, fleurs"),
-    _SC.ACHATS_AUTRE: ("Autre", "achats divers, coiffeur, presse"),
+    _SC.ACHATS_CULTURE: ("Culture", "livres, BD, musique, films, presse papier"),
+    _SC.ACHATS_AUTRE: ("Autre", "achats divers, coiffeur"),
     _SC.ENFANTS_GARDE_SCOLAIRE: ("Garde/scolaire", "crèche, nounou, cantine, école"),
     _SC.ENFANTS_ACTIVITES: ("Activités", "activités et loisirs des enfants"),
     _SC.ENFANTS_AUTRE: ("Autre", "vêtements, équipement, jouets"),

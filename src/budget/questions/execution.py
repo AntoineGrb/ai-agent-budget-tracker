@@ -1,7 +1,7 @@
 """`budget classify` : classement, puis deux blocs de dialogue (cadrage §7).
 
 1. Classement et enregistrement : règles fixes, décisions, règles apprises.
-2. Bloc 1 : questions sur les débits hors carte (RG-06).
+2. Bloc 1 : questions sur les débits hors carte (RG-06) et les paiements Amazon (RG-13).
 3. Bloc 2 : validation en lot des paiements carte, avec les propositions du catégoriseur.
 
 Chaque bloc reclasse le mois à partir de la base avant de poser ses questions. `q` dans un bloc
@@ -31,7 +31,6 @@ class EtatMois:
     resultat: ResultatClassement
     questions: list[Question]  # bloc 1
     groupes: list[GroupeMarchand]  # bloc 2 : groupes marchands en attente
-    amazon: list[Transaction]  # bloc 2 : paiements Amazon à compléter (RG-13)
 
 
 @dataclass(frozen=True)
@@ -42,7 +41,6 @@ class RapportClassement:
     bilan: Bilan | None = None  # bloc 1 ; None : aucune question posée
     bilan_lot: BilanLot | None = None  # bloc 2
     groupes: list[GroupeMarchand] = field(default_factory=list)
-    amazon: list[Transaction] = field(default_factory=list)
 
 
 def _verifier_importe(mois: str, ledger: Ledger) -> None:
@@ -62,20 +60,19 @@ def classer(mois: str, ledger: Ledger, contexte: Contexte) -> EtatMois:
     resultat = classer_mois(mois, transactions, seuil_amazon, memoire)
     ledger.enregistrer_classement(mois, resultat)
     classements = {c.transaction_id: c for c in resultat.classements}
-    groupes, amazon = grouper(en_attente(transactions, classements), seuil_amazon)
+    groupes = grouper(en_attente(transactions, classements))
     return EtatMois(
         transactions=transactions,
         resultat=resultat,
         questions=construire_questions(transactions, resultat, memoire.regles),
         groupes=groupes,
-        amazon=amazon,
     )
 
 
 def bloc_questions(
     mois: str, ledger: Ledger, contexte: Contexte, interlocuteur: Interlocuteur
 ) -> Bilan | None:
-    """Bloc 1 : questions sur les débits hors carte ; `None` s'il n'y en a aucune."""
+    """Bloc 1 : débits hors carte et Amazon (RG-13) ; `None` s'il n'y a aucune question."""
     etat = classer(mois, ledger, contexte)
     if not etat.questions:
         return None
@@ -91,11 +88,9 @@ def bloc_validation(
 ) -> BilanLot | None:
     """Bloc 2 : validation en lot des paiements carte ; `None` si rien n'est en attente."""
     etat = classer(mois, ledger, contexte)
-    if not etat.groupes and not etat.amazon:
+    if not etat.groupes:
         return None
-    return ValidationLot(interlocuteur, ledger, mois, categoriseur).derouler(
-        etat.groupes, etat.amazon
-    )
+    return ValidationLot(interlocuteur, ledger, mois, categoriseur).derouler(etat.groupes)
 
 
 def classer_et_questionner(
@@ -126,5 +121,4 @@ def classer_et_questionner(
         bilan=bilan,
         bilan_lot=bilan_lot,
         groupes=etat.groupes,
-        amazon=etat.amazon,
     )

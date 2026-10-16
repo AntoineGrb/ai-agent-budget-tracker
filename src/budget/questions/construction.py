@@ -2,7 +2,7 @@
 
 from collections.abc import Iterable, Sequence
 
-from budget.classement.cartes import est_paiement_carte
+from budget.classement.cartes import est_amazon, est_paiement_carte
 from budget.classement.modeles import ResultatClassement
 from budget.classement.trade_republic import TYPE_VIREMENT, type_tr
 from budget.libelles import normaliser_libelle
@@ -22,14 +22,26 @@ def est_virement(transaction: Transaction) -> bool:
 def construire_questions(
     transactions: Sequence[Transaction], resultat: ResultatClassement, regles: Iterable[Regle]
 ) -> list[Question]:
-    """RG-06 : une question par débit hors carte en attente, chronologique, joint avant TR."""
+    """Une question par débit hors carte en attente (RG-06) et par paiement Amazon en attente
+    (RG-13), dans l'ordre chronologique, joint avant TR."""
     regles = list(regles)
     par_id = {t.id: t for t in transactions}
     questions = []
     for classement in resultat.classements:
         t = par_id[classement.transaction_id]
-        if classement.decidee or est_paiement_carte(t):
-            continue  # paiements carte : validation en lot
+        if classement.decidee:
+            continue
+        if est_paiement_carte(t):
+            if est_amazon(t):  # RG-13 : au-dessus du seuil, une question, jamais de règle
+                questions.append(
+                    Question(
+                        type=TypeQuestion.OPERATION,
+                        motif="RG-13",
+                        transaction=t,
+                        regle_proposable=False,
+                    )
+                )
+            continue  # autres paiements carte : validation en lot
         demander = toujours_demander(regles, t)  # RG-14
         questions.append(
             Question(

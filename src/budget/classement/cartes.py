@@ -60,23 +60,16 @@ def en_attente(
     ]
 
 
-def grouper(
-    attente: Sequence[Transaction], seuil_amazon: Decimal
-) -> tuple[list[GroupeMarchand], list[Transaction]]:
-    """Groupes marchands (joint puis perso, total absolu décroissant) et Amazon à compléter.
+def grouper(attente: Sequence[Transaction]) -> list[GroupeMarchand]:
+    """Groupes marchands, joint puis perso, par total absolu décroissant.
 
-    Un paiement Amazon au-dessus du seuil n'entre dans aucun groupe : il ne part jamais au LLM et
-    n'est couvert par aucune règle (RG-13). Il est présenté seul, dans l'ordre chronologique.
+    Un paiement Amazon n'entre dans aucun groupe : il ne part jamais au LLM et n'est couvert par
+    aucune règle ; au-dessus du seuil, il fait l'objet d'une question (RG-13).
     """
     par_cle: dict[tuple[Source, str], list[Transaction]] = {}
-    amazon: list[Transaction] = []
     for t in attente:
-        if est_amazon(t):
-            if not amazon_sous_le_seuil(t, seuil_amazon):
-                amazon.append(t)
-            continue
-        par_cle.setdefault((t.source, cle_marchand(t.libelle_normalise)), []).append(t)
+        if not est_amazon(t):
+            par_cle.setdefault((t.source, cle_marchand(t.libelle_normalise)), []).append(t)
     groupes = [GroupeMarchand(source, cle, tuple(ts)) for (source, cle), ts in par_cle.items()]
     groupes.sort(key=lambda g: (g.compte is Compte.PERSO, -abs(g.total), g.cle))
-    amazon.sort(key=lambda t: (t.date_operation, t.source.value, t.position))
-    return groupes, amazon
+    return groupes

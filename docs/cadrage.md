@@ -97,7 +97,7 @@ Chaque débit reçoit soit une sous-catégorie, soit le statut « non compté »
 | Courses | Supermarché · Commerces · Autre | Carrefour, Intermarché ; boulangerie, boucherie, primeur |
 | Restos | Restaurant · Livraison · Autre | Restaurants, cafés ; Uber Eats, Deliveroo |
 | Loisirs | Sorties · Sport · Vacances · Autre | Cinéma, musées ; Decathlon, club ; Airbnb, Booking |
-| Achats | Vêtements · Maison · Tech · Cadeaux · Autre | H&M ; Ikea, déco ; informatique, téléphonie ; cadeaux offerts ; Amazon sous 50 € |
+| Achats | Vêtements · Maison · Tech · Cadeaux · Culture · Autre | H&M ; Ikea, déco ; informatique, téléphonie ; cadeaux offerts ; livres, BD, musique ; Amazon sous 50 € |
 | Enfants | Garde/scolaire · Activités · Autre | Crèche, nounou, cantine ; activités ; équipement, jouets |
 | Transport | Voiture · Transports en commun · Train/avion · Autre | Carburant, parking, péages, entretien ; Navigo ; SNCF, billets d'avion ; taxi, VTC |
 | Abonnements | Internet · Streaming · Logiciels · Banque · Autre | Box, forfait mobile ; Spotify, Netflix ; logiciels, IA ; offre bancaire, cotisation carte |
@@ -131,7 +131,7 @@ Les règles conservées gardent leur numéro, pour que les références dans le 
 | RG-10 | Un débit déclaré non compté reste dans le ledger, mais n'entre dans aucun total. | Virements de 500 € « Mensuel » vers TR et de 400 € vers Sarah. |
 | RG-11 | Sur Trade Republic, les exécutions d'ordres et les versements PEA sont non comptés d'office. | DCA 10 €, arrondi 5,25 €. |
 | RG-12 | Le sens d'une opération Trade Republic se lit dans sa colonne, jamais dans son type. | Zalando 51 € en entrée, de type « Avoir » : c'est un avoir carte (RG-09). |
-| RG-13 | Amazon sous 50 € va en Achats › Autre ; à partir de 50 €, question sur la ligne, jamais de règle. | 49,72 € classé automatiquement ; 78,38 € soumis. |
+| RG-13 | Amazon sous 50 € va en Achats › Autre ; à partir de 50 €, une question comme pour les débits hors carte, jamais de règle. | 49,72 € classé automatiquement ; 78,38 € soumis. |
 | RG-14 | PayPal et chèques déclenchent toujours une question, sans règle possible. | PayPal 25 € le 04/06. |
 | RG-16 | Clé de dédoublonnage : source, date, montant, libellé normalisé et rang d'occurrence. Un réimport n'a aucun effet. | Deux cafés VARENNE CAFE à 6,80 € le 24/06 : rangs 1 et 2. |
 | RG-19 | Seuls les débits sont suivis. Les crédits sont lus et contrôlés, puis ignorés, sauf les avoirs carte (RG-09). | Salaires, remboursement de mutuelle de 77,90 € : ignorés. |
@@ -165,7 +165,7 @@ Une question tranchée ne revient jamais : chaque réponse devient soit une règ
 
 **Déroulé dans le terminal**, en deux blocs :
 
-1. **Débits hors carte**, un par un. Le menu propose les dix catégories et « Non compté », puis la sous-catégorie, puis « En faire une règle ? » (oui, non, toujours demander).
+1. **Débits hors carte et paiements Amazon d'au moins 50 €** (RG-13), un par un. Le menu propose les dix catégories et « Non compté », puis la sous-catégorie, puis « En faire une règle ? » (oui, non, toujours demander).
 2. **Paiements carte** : un tableau des marchands inconnus avec la proposition du LLM. Entrée valide tout ; un numéro corrige une ligne, vers une autre sous-catégorie ou vers « non compté ». Chaque marchand validé devient une règle.
 
 Une question couverte par une règle créée plus tôt dans le même dialogue est sautée : après la règle sur un premier virement vers Sarah, le second n'est pas reposé. `q` quitte à tout moment ; les réponses déjà données sont conservées.

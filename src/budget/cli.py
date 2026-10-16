@@ -228,7 +228,6 @@ def _afficher_bilan(rapport: RapportClassement, interactif: bool) -> None:
     attente = {
         "questions": len(rapport.questions),
         "marchands à valider": len(rapport.groupes),
-        "paiements Amazon à compléter": len(rapport.amazon),
     }
     if any(attente.values()):
         motif = "" if interactif else " (--sans-questions ou entrée non interactive)"

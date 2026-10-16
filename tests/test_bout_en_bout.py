@@ -139,19 +139,31 @@ def test_regles_fixes_rg03_rg11_rg13(parcours: Parcours) -> None:
     assert {juin.classements[t.id].sous_categorie for t in amazon} == {SousCategorie.ACHATS_AUTRE}
 
 
-def test_questions_de_juin_rg06_rg14(parcours: Parcours) -> None:
+def test_questions_de_juin_rg06_rg13_rg14(parcours: Parcours) -> None:
     bilan = parcours.juin.rapport.bilan
     assert bilan is not None
-    assert (bilan.a_poser, bilan.posees, bilan.couvertes) == (23, 21, 2)
-    assert (bilan.repondues, bilan.passees, bilan.regles_creees) == (21, 0, 15)
+    assert (bilan.a_poser, bilan.posees, bilan.couvertes) == (26, 24, 2)
+    assert (bilan.repondues, bilan.passees, bilan.regles_creees) == (24, 0, 15)
     assert not bilan.interrompu
     assert parcours.juin.rapport.questions == []
+    # RG-13 : les 3 Amazon d'au moins 50 € sont des décisions, jamais des règles
+    amazon = [
+        c
+        for c in parcours.juin.rapport.resultat.classements
+        if cle_marchand(parcours.juin.par_id[c.transaction_id].libelle_normalise).startswith(
+            "AMAZON"
+        )
+    ]
+    assert Counter(c.origine for c in amazon) == {
+        OrigineClassement.DECISION: 3,
+        OrigineClassement.REGLE_FIXE: 2,
+    }
 
 
 def test_validation_en_lot_de_juin(parcours: Parcours) -> None:
     lot = parcours.juin.rapport.bilan_lot
     assert lot is not None
-    assert (lot.lignes, lot.proposes, lot.valides, lot.corriges) == (65, 62, 65, 5)
+    assert (lot.lignes, lot.proposes, lot.valides, lot.corriges) == (62, 62, 62, 2)
     assert (lot.en_attente, lot.regles_creees, lot.avertissement) == (0, 62, None)
     # Un seul appel au catégoriseur, avec les 62 clés marchand de juin
     assert len(parcours.juin.appels.prompts) == 1
@@ -203,7 +215,7 @@ def test_juillet_profite_des_regles_de_juin(parcours: Parcours) -> None:
     juillet = parcours.juillet
     bilan = juillet.rapport.bilan
     assert bilan is not None
-    assert (bilan.a_poser, bilan.regles_creees) == (11, 2)
+    assert (bilan.a_poser, bilan.regles_creees) == (13, 2)
     par_regle = Counter(
         juillet.par_id[c.transaction_id].source.value
         for c in juillet.rapport.resultat.classements
@@ -215,7 +227,7 @@ def test_juillet_profite_des_regles_de_juin(parcours: Parcours) -> None:
     assert par_regle == {"ca_joint": 9, "tr": 1}
     lot = juillet.rapport.bilan_lot
     assert lot is not None
-    assert (lot.lignes, lot.valides, lot.regles_creees) == (73, 73, 71)
+    assert (lot.lignes, lot.valides, lot.regles_creees) == (71, 71, 71)
     regles = parcours.ledger.regles()
     assert len(regles) == 150
     assert sum(1 for r in regles if r.type is TypeRegle.MARCHAND_CARTE) == 133
