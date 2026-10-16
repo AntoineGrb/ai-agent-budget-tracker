@@ -1,4 +1,4 @@
-"""Agent catégoriseur : une sous-catégorie par clé marchand inconnue (spec 07, cadrage §9).
+"""Agent catégoriseur : une sous-catégorie par clé marchand inconnue (cadrage §9).
 
 Le modèle ne reçoit que des clés marchand de paiements carte, masquées, une par ligne : ni montant,
 ni date, ni compte. L'énumération `SousCategorie` ferme la sortie ; un validateur vérifie qu'il y a
@@ -15,11 +15,12 @@ from typing import Protocol
 import pydantic_ai
 from pydantic import BaseModel, ConfigDict
 from pydantic_ai import Agent, ModelRetry, RunContext
+from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.models import Model
 from pydantic_ai.settings import ModelSettings
 
 from budget.agents.confidentialite import masquer
-from budget.categories import SousCategorie, categorie_de, libelle_de, nature_de
+from budget.categories import SousCategorie, exemples_de, libelle_complet
 from budget.classement.cartes import GroupeMarchand, est_paiement_carte
 from budget.errors import CategorisationError, ControleError
 from budget.models import Source
@@ -49,10 +50,7 @@ class Soumission:
 
 
 def _instructions() -> str:
-    lignes = [
-        f"- {sc.value} : {categorie_de(sc).libelle} › {libelle_de(sc)} ({nature_de(sc).value})"
-        for sc in SousCategorie
-    ]
+    lignes = [f"- {sc.value} : {libelle_complet(sc)} ({exemples_de(sc)})" for sc in SousCategorie]
     return "\n".join(
         [
             "Tu catégorises des libellés de paiements carte d'un foyer français.",
@@ -125,6 +123,20 @@ class CategoriseurIndisponible:
         raise CategorisationError(self.raison)
 
 
+def raison_echec(erreur: Exception) -> str:
+    """Cause d'un échec pour le terminal : statut HTTP et message du fournisseur, sans le prompt."""
+    raison = type(erreur).__name__
+    if isinstance(erreur, ModelHTTPError):
+        details = [f"HTTP {erreur.status_code}"]
+        corps = erreur.body
+        if isinstance(corps, dict) and isinstance(corps.get("error"), dict):
+            details.append(str(corps["error"].get("message", "")))
+        if erreur.suggested_model_id is not None:
+            details.append(f"modèle suggéré : {erreur.suggested_model_id}")
+        raison += " : " + ", ".join(d for d in details if d)
+    return f"catégoriseur en échec ({raison})"
+
+
 def verifier_groupes(groupes: Sequence[GroupeMarchand]) -> None:
     """Défense en profondeur : seuls des paiements carte peuvent partir au LLM (cadrage §11)."""
     for groupe in groupes:
@@ -159,11 +171,10 @@ class CategoriseurLLM:
             try:
                 par_libelle.update(self._appeler(lot))
             except Exception as erreur:  # réseau, authentification, sortie invalide…
-                journal.warning("catégoriseur en échec : %s", type(erreur).__name__)
+                statut = getattr(erreur, "status_code", "")
+                journal.warning("catégoriseur en échec : %s %s", type(erreur).__name__, statut)
                 partielles = {cle: par_libelle[m] for cle, m in masques.items() if m in par_libelle}
-                raise CategorisationError(
-                    f"catégoriseur en échec ({type(erreur).__name__})", partielles
-                ) from erreur
+                raise CategorisationError(raison_echec(erreur), partielles) from erreur
         return {cle: par_libelle[m] for cle, m in masques.items() if m in par_libelle}
 
     def _appeler(self, lot: tuple[str, ...]) -> dict[str, SousCategorie]:

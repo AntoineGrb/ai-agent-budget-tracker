@@ -2,9 +2,9 @@
 
 ## Vision & Contexte
 - Projet : Budget Tracker agentique (projet d'apprentissage n°2, framework PydanticAI v2)
-- Objectif : chaque mois, transformer trois extractions bancaires (Crédit Agricole cartes et compte joint en CSV, Trade Republic en PDF) en un suivi des dépenses du foyer publié dans Google Sheets, avec une vue compte joint et une vue compte perso. Environ 80 % du projet est de l'ETL déterministe ; le LLM sert uniquement à catégoriser les marchands inconnus et à commenter des chiffres déjà calculés par le code.
-- Cadrage global : voir `docs/cadrage/` (règles de gestion RG-01 à RG-18, natures de flux, catégories, contrôles, plan en 10 étapes).
-- Étape en cours : voir la spec la plus récente non terminée dans `docs/specs/`.
+- Objectif : chaque mois, transformer trois extractions bancaires (Crédit Agricole cartes et compte joint en CSV, Trade Republic en PDF) en un suivi des dépenses du foyer, avec une vue compte joint et une vue compte perso. Seuls les débits sont suivis : chacun reçoit une sous-catégorie ou est déclaré « non compté » ; les crédits sont ignorés, sauf les avoirs carte. L'essentiel du projet est de l'ETL déterministe ; le LLM sert uniquement à catégoriser les marchands carte inconnus (et, plus tard, à commenter des chiffres déjà calculés par le code).
+- Cadrage global : voir `docs/cadrage.md`, recadré le 15 octobre 2026 (règles de gestion conservées et retirées, catégories, contrôles, plan).
+- Étape en cours : voir la spec la plus récente non terminée dans `.claude/plan/`.
 
 ## Commandes de Développement
 - Installation : `uv sync`
@@ -34,13 +34,13 @@
 - Un contrôle de cohérence qui échoue arrête le traitement. Ne jamais le transformer en avertissement, l'assouplir ou ajouter une tolérance pour faire passer un test : corriger le parser.
 - Ne rien envoyer au LLM d'autre que des libellés marchands de paiements carte (cadrage §11).
 - Ne pas introduire de nouvelle dépendance sans demander au préalable. Les dépendances autorisées sont listées dans la spec de l'étape en cours.
-- Ne pas modifier le schéma SQLite sans script de migration (à partir de l'étape 4).
+- Ne pas modifier le schéma SQLite sans script de migration (à partir de l'étape 4). Seule exception : le recadrage d'octobre 2026 a refait le schéma en une migration unique, sur une base neuve.
 - PydanticAI : v2 uniquement. Consulter le skill `pydantic-ai-v2` avant d'écrire ou de modifier du code d'agent.
 - Exécuter la vérification complète (lint, format, typage, tests) avant de déclarer une tâche terminée.
 - Une spec à la fois. Si la spec est ambiguë ou contredite par les données, s'arrêter et poser la question plutôt que d'inventer ; noter l'écart dans la section « Écarts constatés » de la spec.
 
 ## Structure de la Documentation
-- `docs/cadrage/` : Cadrage général du projet (export Markdown du document de cadrage)
+- `docs/cadrage.md` : Cadrage général du projet (export Markdown du document de cadrage)
 - `.claude/plan/` : Spécifications techniques par étape (`01-socle.md`, `02-parsers-credit-agricole.md`, `03-parser-trade-republic.md`, …)
 - `.claude/skills/` : Savoir-faire réutilisables (`implementer-spec`, `parser-releve-bancaire`, `fixtures-anonymisees`, `pydantic-ai-v2`)
 

@@ -1,7 +1,8 @@
 """Migrations du schéma SQLite, versionnées par `PRAGMA user_version`.
 
-Toute évolution du schéma passe par une nouvelle migration ajoutée en fin de `MIGRATIONS`.
-Une migration publiée n'est jamais modifiée.
+Le recadrage d'octobre 2026 a refait le schéma en une seule migration, sur une base neuve. Depuis,
+toute évolution du schéma passe par une nouvelle migration ajoutée en fin de `MIGRATIONS`. Une
+migration publiée n'est jamais modifiée.
 """
 
 import sqlite3
@@ -20,7 +21,7 @@ class Migration:
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(
         numero=1,
-        description="imports et transactions",
+        description="schéma du recadrage : imports, transactions, classements, mémoire",
         sql="""
 CREATE TABLE imports (
     id              INTEGER PRIMARY KEY,
@@ -55,66 +56,12 @@ CREATE TABLE transactions (
 );
 
 CREATE INDEX transactions_mois ON transactions (mois_budgetaire);
-""",
-    ),
-    Migration(
-        numero=2,
-        description="classements, alertes et charges fixes",
-        sql="""
-CREATE TABLE classements (
-    transaction_id     TEXT PRIMARY KEY REFERENCES transactions (id),
-    mois_budgetaire    TEXT NOT NULL,
-    nature             TEXT,                 -- NULL = non classée
-    sous_categorie     TEXT,
-    mois_rattachement  TEXT,                 -- NULL : mois de paie à déterminer (RG-04)
-    origine            TEXT NOT NULL,
-    detail             TEXT,
-    contrepartie_id    TEXT REFERENCES transactions (id),
-    lien_id            TEXT REFERENCES transactions (id),
-    exceptionnel       INTEGER NOT NULL DEFAULT 0
-);
 
-CREATE INDEX classements_mois ON classements (mois_budgetaire);
-
-CREATE TABLE alertes (
-    id              INTEGER PRIMARY KEY,
-    mois            TEXT NOT NULL,
-    code            TEXT NOT NULL,
-    transaction_id  TEXT REFERENCES transactions (id),
-    message         TEXT NOT NULL
-);
-
-CREATE INDEX alertes_mois ON alertes (mois);
-
-CREATE TABLE charges_fixes_mois (
-    mois             TEXT NOT NULL,
-    nom              TEXT NOT NULL,
-    attendu_centimes INTEGER NOT NULL,
-    reel_centimes    INTEGER,
-    seuil_pct        TEXT NOT NULL,          -- Decimal en texte, jamais REAL
-    hors_seuil       INTEGER NOT NULL,
-    PRIMARY KEY (mois, nom)
-);
-
-CREATE TABLE charges_fixes_transactions (
-    mois            TEXT NOT NULL,
-    nom             TEXT NOT NULL,
-    transaction_id  TEXT NOT NULL REFERENCES transactions (id),
-    PRIMARY KEY (mois, nom, transaction_id),
-    FOREIGN KEY (mois, nom) REFERENCES charges_fixes_mois (mois, nom)
-);
-""",
-    ),
-    Migration(
-        numero=3,
-        description="questions, règles apprises et décisions",
-        sql="""
 CREATE TABLE questions (
     id               INTEGER PRIMARY KEY,
     transaction_id   TEXT NOT NULL UNIQUE REFERENCES transactions (id),
-    contrepartie_id  TEXT REFERENCES transactions (id),
-    type             TEXT NOT NULL CHECK (type IN ('virement', 'salaire', 'operation')),
-    motif            TEXT NOT NULL,                  -- 'RG-06', 'RG-14', 'RG-04', 'non_classe'
+    type             TEXT NOT NULL CHECK (type IN ('virement', 'operation')),
+    motif            TEXT NOT NULL,                  -- 'RG-06', 'RG-13', 'RG-14'
     posee_le         TEXT NOT NULL,
     repondue_le      TEXT
 );
@@ -130,35 +77,38 @@ CREATE TABLE regles (
     valeur                TEXT NOT NULL,
     montant_min_centimes  INTEGER,
     montant_max_centimes  INTEGER,
-    nature                TEXT,
     sous_categorie        TEXT,
-    detail                TEXT,
+    non_comptee           INTEGER NOT NULL DEFAULT 0 CHECK (non_comptee IN (0, 1)),  -- RG-10
     active                INTEGER NOT NULL DEFAULT 1,
     creee_le              TEXT NOT NULL,
+    desactivee_le         TEXT,
     question_id           INTEGER REFERENCES questions (id),
-    CHECK ((montant_min_centimes IS NULL) = (montant_max_centimes IS NULL))
+    CHECK ((montant_min_centimes IS NULL) = (montant_max_centimes IS NULL)),
+    CHECK (NOT (non_comptee = 1 AND sous_categorie IS NOT NULL))
 );
 
 CREATE TABLE decisions (
     transaction_id  TEXT PRIMARY KEY REFERENCES transactions (id),
     question_id     INTEGER NOT NULL REFERENCES questions (id),
-    nature          TEXT NOT NULL,
     sous_categorie  TEXT,
-    detail          TEXT,
-    lien_id         TEXT REFERENCES transactions (id),
-    mois_paie       TEXT,                            -- question salaire (RG-04)
+    non_comptee     INTEGER NOT NULL DEFAULT 0,
     regle_id        INTEGER REFERENCES regles (id),  -- règle créée à partir de cette réponse
-    decidee_le      TEXT NOT NULL
+    decidee_le      TEXT NOT NULL,
+    CHECK ((non_comptee = 1) <> (sous_categorie IS NOT NULL))
 );
-""",
-    ),
-    Migration(
-        numero=4,
-        description="propositions du catégoriseur, tags exceptionnels, règle appliquée",
-        sql="""
-ALTER TABLE regles ADD COLUMN desactivee_le TEXT;
 
-ALTER TABLE classements ADD COLUMN regle_id INTEGER REFERENCES regles (id);
+CREATE TABLE classements (
+    transaction_id   TEXT PRIMARY KEY REFERENCES transactions (id),
+    mois_budgetaire  TEXT NOT NULL,
+    sous_categorie   TEXT,                 -- NULL et non_comptee = 0 : en attente
+    non_comptee      INTEGER NOT NULL DEFAULT 0,
+    origine          TEXT NOT NULL,
+    detail           TEXT,
+    regle_id         INTEGER REFERENCES regles (id),
+    CHECK (NOT (non_comptee = 1 AND sous_categorie IS NOT NULL))
+);
+
+CREATE INDEX classements_mois ON classements (mois_budgetaire);
 
 CREATE TABLE propositions (
     id                       INTEGER PRIMARY KEY,
@@ -168,18 +118,13 @@ CREATE TABLE propositions (
     sous_categorie_proposee  TEXT,           -- NULL : aucune proposition (mode dégradé)
     modele                   TEXT,           -- ex. anthropic:claude-haiku-4-5
     sous_categorie_corrigee  TEXT,           -- saisie de l'utilisateur, prime sur la proposition
+    corrigee_non_comptee     INTEGER NOT NULL DEFAULT 0,
     regle_id                 INTEGER REFERENCES regles (id),
     proposee_le              TEXT NOT NULL,
     validee_le               TEXT
 );
 
 CREATE INDEX propositions_cle ON propositions (source, cle_marchand);
-
-CREATE TABLE exceptionnels (
-    transaction_id  TEXT PRIMARY KEY REFERENCES transactions (id),
-    exceptionnel    INTEGER NOT NULL CHECK (exceptionnel IN (0, 1)),
-    decide_le       TEXT NOT NULL
-);
 """,
     ),
 )
@@ -201,7 +146,8 @@ def appliquer_migrations(connexion: sqlite3.Connection, nom_base: str) -> list[i
     if actuelle > VERSION_COURANTE:
         raise LedgerError(
             f"{nom_base} : schéma en version {actuelle}, ce code ne connaît que les versions "
-            f"jusqu'à {VERSION_COURANTE} (base créée par une version plus récente du code)"
+            f"jusqu'à {VERSION_COURANTE}. Base d'une autre version du code (avant le recadrage "
+            "d'octobre 2026 ?) : la mettre de côté et repartir d'une base neuve"
         )
     appliquees = []
     for migration in MIGRATIONS:

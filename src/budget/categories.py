@@ -1,29 +1,28 @@
-"""Taxonomie fermée des dépenses à deux niveaux (cadrage §4).
+"""Taxonomie fermée des dépenses à deux niveaux, et imputation d'une opération (cadrage §4).
 
 Une seule énumération de sous-catégories à plat : la catégorie parente se déduit du préfixe, ce
-qui rend impossible un couple catégorie/sous-catégorie incohérent.
+qui rend impossible un couple catégorie/sous-catégorie incohérent. Chaque catégorie a son « Autre ».
 """
 
 from enum import StrEnum
+from typing import Self
 
+from pydantic import BaseModel, ConfigDict, model_validator
 
-class NatureDepense(StrEnum):
-    FIXE = "fixe"
-    PILOTABLE = "pilotable"
+NON_COMPTE = "Non compté"
 
 
 class Categorie(StrEnum):
     LOGEMENT = "logement"
-    ENFANTS = "enfants"
-    IMPOTS = "impots"
-    ABONNEMENTS = "abonnements"
     COURSES = "courses"
     RESTOS = "restos"
     LOISIRS = "loisirs"
     ACHATS = "achats"
+    ENFANTS = "enfants"
     TRANSPORT = "transport"
+    ABONNEMENTS = "abonnements"
     SANTE = "sante"
-    CADEAUX = "cadeaux"
+    DIVERS = "divers"
 
     @property
     def libelle(self) -> str:
@@ -32,105 +31,96 @@ class Categorie(StrEnum):
 
 class SousCategorie(StrEnum):
     LOGEMENT_PRET = "logement.pret"
-    LOGEMENT_ASSURANCE_EMPRUNTEUR = "logement.assurance_emprunteur"
-    LOGEMENT_COPROPRIETE = "logement.copropriete"
-    LOGEMENT_ASSURANCE_HABITATION = "logement.assurance_habitation"
-    LOGEMENT_TRAVAUX_BRICOLAGE = "logement.travaux_bricolage"
-    ENFANTS_GARDE = "enfants.garde"
-    ENFANTS_VETEMENTS_EQUIPEMENT = "enfants.vetements_equipement"
-    ENFANTS_ACTIVITES = "enfants.activites"
-    IMPOTS_IMPOT_REVENU = "impots.impot_revenu"
-    IMPOTS_TAXE_FONCIERE = "impots.taxe_fonciere"
-    ABONNEMENTS_ENERGIE = "abonnements.energie"
-    ABONNEMENTS_INTERNET_MOBILE = "abonnements.internet_mobile"
-    ABONNEMENTS_STREAMING_MUSIQUE = "abonnements.streaming_musique"
-    ABONNEMENTS_LOGICIELS_IA = "abonnements.logiciels_ia"
-    ABONNEMENTS_FRAIS_BANCAIRES = "abonnements.frais_bancaires"
+    LOGEMENT_CHARGES_ASSURANCES = "logement.charges_assurances"
+    LOGEMENT_ENERGIE = "logement.energie"
+    LOGEMENT_AUTRE = "logement.autre"
     COURSES_SUPERMARCHE = "courses.supermarche"
-    COURSES_COMMERCES_BOUCHE = "courses.commerces_bouche"
+    COURSES_COMMERCES = "courses.commerces"
+    COURSES_AUTRE = "courses.autre"
     RESTOS_RESTAURANT = "restos.restaurant"
     RESTOS_LIVRAISON = "restos.livraison"
-    RESTOS_CAFES_SNACKS = "restos.cafes_snacks"
+    RESTOS_AUTRE = "restos.autre"
     LOISIRS_SORTIES = "loisirs.sorties"
     LOISIRS_SPORT = "loisirs.sport"
-    LOISIRS_JEUX_APPS = "loisirs.jeux_apps"
-    LOISIRS_VOYAGES = "loisirs.voyages"
+    LOISIRS_VACANCES = "loisirs.vacances"
+    LOISIRS_AUTRE = "loisirs.autre"
     ACHATS_VETEMENTS = "achats.vetements"
-    ACHATS_MAISON_DECO = "achats.maison_deco"
-    ACHATS_HIGH_TECH = "achats.high_tech"
-    ACHATS_DIVERS = "achats.divers"
-    TRANSPORT_CARBURANT = "transport.carburant"
+    ACHATS_MAISON = "achats.maison"
+    ACHATS_TECH = "achats.tech"
+    ACHATS_CADEAUX = "achats.cadeaux"
+    ACHATS_AUTRE = "achats.autre"
+    ENFANTS_GARDE_SCOLAIRE = "enfants.garde_scolaire"
+    ENFANTS_ACTIVITES = "enfants.activites"
+    ENFANTS_AUTRE = "enfants.autre"
+    TRANSPORT_VOITURE = "transport.voiture"
     TRANSPORT_TRANSPORTS_COMMUN = "transport.transports_commun"
-    TRANSPORT_PARKING_PEAGES = "transport.parking_peages"
-    TRANSPORT_ENTRETIEN_VEHICULE = "transport.entretien_vehicule"
-    TRANSPORT_ASSURANCE_VEHICULE = "transport.assurance_vehicule"
     TRANSPORT_TRAIN_AVION = "transport.train_avion"
+    TRANSPORT_AUTRE = "transport.autre"
+    ABONNEMENTS_INTERNET = "abonnements.internet"
+    ABONNEMENTS_STREAMING = "abonnements.streaming"
+    ABONNEMENTS_LOGICIELS = "abonnements.logiciels"
+    ABONNEMENTS_BANQUE = "abonnements.banque"
+    ABONNEMENTS_AUTRE = "abonnements.autre"
     SANTE_PHARMACIE = "sante.pharmacie"
-    SANTE_CONSULTATIONS = "sante.consultations"
-    SANTE_OPTIQUE = "sante.optique"
-    CADEAUX_CADEAUX = "cadeaux.cadeaux"
-    CADEAUX_DONS = "cadeaux.dons"
+    SANTE_MEDECINS = "sante.medecins"
+    SANTE_AUTRE = "sante.autre"
+    DIVERS_IMPOTS = "divers.impots"
+    DIVERS_AUTRE = "divers.autre"
 
 
 _LIBELLES_CATEGORIES: dict[Categorie, str] = {
     Categorie.LOGEMENT: "Logement",
-    Categorie.ENFANTS: "Enfants",
-    Categorie.IMPOTS: "Impôts",
-    Categorie.ABONNEMENTS: "Abonnements",
     Categorie.COURSES: "Courses",
-    Categorie.RESTOS: "Restos & commandes",
+    Categorie.RESTOS: "Restos",
     Categorie.LOISIRS: "Loisirs",
     Categorie.ACHATS: "Achats",
+    Categorie.ENFANTS: "Enfants",
     Categorie.TRANSPORT: "Transport",
+    Categorie.ABONNEMENTS: "Abonnements",
     Categorie.SANTE: "Santé",
-    Categorie.CADEAUX: "Cadeaux & dons",
+    Categorie.DIVERS: "Divers",
 }
 
-_FIXE = NatureDepense.FIXE
-_PILOTABLE = NatureDepense.PILOTABLE
+_SC = SousCategorie
 
-# Répartition Fixe/Pilotable des catégories « Mixte » du cadrage : proposition centralisée ici
-# pour pouvoir être ajustée sans toucher au reste du code.
-_METADONNEES: dict[SousCategorie, tuple[NatureDepense, str]] = {
-    SousCategorie.LOGEMENT_PRET: (_FIXE, "Prêt"),
-    SousCategorie.LOGEMENT_ASSURANCE_EMPRUNTEUR: (_FIXE, "Assurance emprunteur"),
-    SousCategorie.LOGEMENT_COPROPRIETE: (_FIXE, "Charges copropriété"),
-    SousCategorie.LOGEMENT_ASSURANCE_HABITATION: (_FIXE, "Assurance habitation"),
-    SousCategorie.LOGEMENT_TRAVAUX_BRICOLAGE: (_PILOTABLE, "Travaux & bricolage"),
-    SousCategorie.ENFANTS_GARDE: (_FIXE, "Garde"),
-    SousCategorie.ENFANTS_VETEMENTS_EQUIPEMENT: (_PILOTABLE, "Vêtements & équipement"),
-    SousCategorie.ENFANTS_ACTIVITES: (_PILOTABLE, "Activités"),
-    SousCategorie.IMPOTS_IMPOT_REVENU: (_FIXE, "Impôt sur le revenu"),
-    SousCategorie.IMPOTS_TAXE_FONCIERE: (_FIXE, "Taxe foncière"),
-    SousCategorie.ABONNEMENTS_ENERGIE: (_FIXE, "Énergie"),
-    SousCategorie.ABONNEMENTS_INTERNET_MOBILE: (_FIXE, "Internet & mobile"),
-    SousCategorie.ABONNEMENTS_STREAMING_MUSIQUE: (_FIXE, "Streaming & musique"),
-    SousCategorie.ABONNEMENTS_LOGICIELS_IA: (_FIXE, "Logiciels & IA"),
-    SousCategorie.ABONNEMENTS_FRAIS_BANCAIRES: (_FIXE, "Frais bancaires"),
-    SousCategorie.COURSES_SUPERMARCHE: (_PILOTABLE, "Supermarché"),
-    SousCategorie.COURSES_COMMERCES_BOUCHE: (_PILOTABLE, "Commerces de bouche"),
-    SousCategorie.RESTOS_RESTAURANT: (_PILOTABLE, "Restaurant"),
-    SousCategorie.RESTOS_LIVRAISON: (_PILOTABLE, "Livraison"),
-    SousCategorie.RESTOS_CAFES_SNACKS: (_PILOTABLE, "Cafés & snacks"),
-    SousCategorie.LOISIRS_SORTIES: (_PILOTABLE, "Sorties"),
-    SousCategorie.LOISIRS_SPORT: (_PILOTABLE, "Sport"),
-    SousCategorie.LOISIRS_JEUX_APPS: (_PILOTABLE, "Jeux & apps"),
-    SousCategorie.LOISIRS_VOYAGES: (_PILOTABLE, "Voyages"),
-    SousCategorie.ACHATS_VETEMENTS: (_PILOTABLE, "Vêtements"),
-    SousCategorie.ACHATS_MAISON_DECO: (_PILOTABLE, "Maison & déco"),
-    SousCategorie.ACHATS_HIGH_TECH: (_PILOTABLE, "High-tech"),
-    SousCategorie.ACHATS_DIVERS: (_PILOTABLE, "Divers"),
-    SousCategorie.TRANSPORT_CARBURANT: (_PILOTABLE, "Carburant"),
-    SousCategorie.TRANSPORT_TRANSPORTS_COMMUN: (_FIXE, "Transports en commun"),
-    SousCategorie.TRANSPORT_PARKING_PEAGES: (_PILOTABLE, "Parking & péages"),
-    SousCategorie.TRANSPORT_ENTRETIEN_VEHICULE: (_PILOTABLE, "Entretien véhicule"),
-    SousCategorie.TRANSPORT_ASSURANCE_VEHICULE: (_FIXE, "Assurance véhicule"),
-    SousCategorie.TRANSPORT_TRAIN_AVION: (_PILOTABLE, "Train & avion"),
-    SousCategorie.SANTE_PHARMACIE: (_PILOTABLE, "Pharmacie"),
-    SousCategorie.SANTE_CONSULTATIONS: (_PILOTABLE, "Consultations"),
-    SousCategorie.SANTE_OPTIQUE: (_PILOTABLE, "Optique"),
-    SousCategorie.CADEAUX_CADEAUX: (_PILOTABLE, "Cadeaux"),
-    SousCategorie.CADEAUX_DONS: (_PILOTABLE, "Dons"),
+# Libellé d'affichage et exemples, repris dans les instructions du catégoriseur
+_METADONNEES: dict[SousCategorie, tuple[str, str]] = {
+    _SC.LOGEMENT_PRET: ("Prêt", "mensualités, assurance emprunteur"),
+    _SC.LOGEMENT_CHARGES_ASSURANCES: ("Charges & assurances", "copropriété, assurance habitation"),
+    _SC.LOGEMENT_ENERGIE: ("Énergie", "électricité, gaz, eau"),
+    _SC.LOGEMENT_AUTRE: ("Autre", "travaux, bricolage"),
+    _SC.COURSES_SUPERMARCHE: ("Supermarché", "grandes surfaces, supérettes, surgelés"),
+    _SC.COURSES_COMMERCES: ("Commerces", "boulangerie, boucherie, primeur, caviste"),
+    _SC.COURSES_AUTRE: ("Autre", "autres courses alimentaires"),
+    _SC.RESTOS_RESTAURANT: ("Restaurant", "restaurants, cafés, snacks, fast-food"),
+    _SC.RESTOS_LIVRAISON: ("Livraison", "repas livrés"),
+    _SC.RESTOS_AUTRE: ("Autre", "distributeurs, cantines d'entreprise"),
+    _SC.LOISIRS_SORTIES: ("Sorties", "cinéma, musées, spectacles, librairie"),
+    _SC.LOISIRS_SPORT: ("Sport", "articles de sport, clubs, salles"),
+    _SC.LOISIRS_VACANCES: ("Vacances", "hébergement, locations de vacances"),
+    _SC.LOISIRS_AUTRE: ("Autre", "jeux, applications"),
+    _SC.ACHATS_VETEMENTS: ("Vêtements", "vêtements, chaussures"),
+    _SC.ACHATS_MAISON: ("Maison", "meubles, déco, équipement de la maison"),
+    _SC.ACHATS_TECH: ("Tech", "informatique, téléphonie, électronique"),
+    _SC.ACHATS_CADEAUX: ("Cadeaux", "cadeaux offerts, cosmétiques, fleurs"),
+    _SC.ACHATS_AUTRE: ("Autre", "achats divers, coiffeur, presse"),
+    _SC.ENFANTS_GARDE_SCOLAIRE: ("Garde/scolaire", "crèche, nounou, cantine, école"),
+    _SC.ENFANTS_ACTIVITES: ("Activités", "activités et loisirs des enfants"),
+    _SC.ENFANTS_AUTRE: ("Autre", "vêtements, équipement, jouets"),
+    _SC.TRANSPORT_VOITURE: ("Voiture", "carburant, parking, péages, entretien, assurance auto"),
+    _SC.TRANSPORT_TRANSPORTS_COMMUN: ("Transports en commun", "métro, bus, tram, abonnement"),
+    _SC.TRANSPORT_TRAIN_AVION: ("Train/avion", "billets de train et d'avion"),
+    _SC.TRANSPORT_AUTRE: ("Autre", "taxi, VTC, vélo"),
+    _SC.ABONNEMENTS_INTERNET: ("Internet", "box, forfait mobile"),
+    _SC.ABONNEMENTS_STREAMING: ("Streaming", "musique, vidéo, presse en ligne"),
+    _SC.ABONNEMENTS_LOGICIELS: ("Logiciels", "logiciels, IA, stockage en ligne"),
+    _SC.ABONNEMENTS_BANQUE: ("Banque", "offre bancaire, cotisation carte, frais"),
+    _SC.ABONNEMENTS_AUTRE: ("Autre", "autres abonnements"),
+    _SC.SANTE_PHARMACIE: ("Pharmacie", "pharmacie, parapharmacie"),
+    _SC.SANTE_MEDECINS: ("Médecins", "consultations, analyses"),
+    _SC.SANTE_AUTRE: ("Autre", "optique, dentaire"),
+    _SC.DIVERS_IMPOTS: ("Impôts", "impôt sur le revenu, taxe foncière"),
+    _SC.DIVERS_AUTRE: ("Autre", "tout le reste"),
 }
 
 
@@ -139,16 +129,49 @@ def categorie_de(sc: SousCategorie) -> Categorie:
     return Categorie(sc.value.split(".", 1)[0])
 
 
-def nature_de(sc: SousCategorie) -> NatureDepense:
-    """Nature Fixe ou Pilotable de la sous-catégorie."""
-    return _METADONNEES[sc][0]
+def sous_categories_de(categorie: Categorie) -> list[SousCategorie]:
+    """Sous-catégories d'une catégorie, dans l'ordre de l'énumération (« Autre » en dernier)."""
+    return [sc for sc in SousCategorie if categorie_de(sc) is categorie]
 
 
 def libelle_de(sc: SousCategorie) -> str:
     """Libellé d'affichage de la sous-catégorie."""
+    return _METADONNEES[sc][0]
+
+
+def exemples_de(sc: SousCategorie) -> str:
+    """Exemples de dépenses de la sous-catégorie."""
     return _METADONNEES[sc][1]
 
 
 def libelle_complet(sc: SousCategorie) -> str:
-    """`Achats › Maison & déco`."""
+    """`Achats › Maison`."""
     return f"{categorie_de(sc).libelle} › {libelle_de(sc)}"
+
+
+class Imputation(BaseModel):
+    """Sous-catégorie où une opération est comptée, ou « non compté » (RG-10), jamais les deux.
+
+    Ni l'un ni l'autre : l'opération attend une question ou la validation en lot.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    sous_categorie: SousCategorie | None = None
+    non_comptee: bool = False
+
+    @model_validator(mode="after")
+    def _exclusives(self) -> Self:
+        if self.non_comptee and self.sous_categorie is not None:
+            raise ValueError("une opération non comptée n'a pas de sous-catégorie (RG-10)")
+        return self
+
+    @property
+    def decidee(self) -> bool:
+        return self.non_comptee or self.sous_categorie is not None
+
+    def libelle_imputation(self) -> str:
+        """`Courses › Supermarché`, `Non compté`, ou vide si l'opération est en attente."""
+        if self.non_comptee:
+            return NON_COMPTE
+        return libelle_complet(self.sous_categorie) if self.sous_categorie is not None else ""

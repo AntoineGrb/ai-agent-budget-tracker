@@ -1,9 +1,16 @@
 # Budget Tracker agentique
 
 Chaque mois, transforme les extractions bancaires du foyer (Crédit Agricole cartes et compte joint
-en CSV, Trade Republic en PDF) en un suivi des dépenses publié dans Google Sheets. Le traitement est
-essentiellement de l'ETL déterministe ; le LLM sert uniquement à catégoriser les marchands inconnus
-et à commenter des chiffres déjà calculés.
+en CSV, Trade Republic en PDF) en un suivi des dépenses par catégorie, en vue joint et en vue perso.
+Seuls les débits sont suivis ; chacun reçoit une sous-catégorie ou est déclaré « non compté ». Le
+traitement est essentiellement de l'ETL déterministe ; le LLM sert uniquement à catégoriser les
+marchands carte inconnus.
+
+```sh
+uv run budget import --mois 2026-06     # contrôle et importe les trois extractions
+uv run budget classify --mois 2026-06   # questions dans le terminal, puis validation des cartes
+uv run budget export --mois 2026-06     # CSV du mois dans data/exports/
+```
 
 Cadrage : `docs/cadrage.md`. Spécifications par étape : `.claude/plan/`.
 

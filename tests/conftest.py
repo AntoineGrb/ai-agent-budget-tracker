@@ -1,27 +1,20 @@
 import itertools
 import shutil
 from collections.abc import Callable, Iterator
-from datetime import date, datetime, timedelta, timezone
+from datetime import date
 from decimal import Decimal
-from functools import cache
 from pathlib import Path
 
 import pytest
 from pydantic_ai import models
 
-from budget import horloge
 from budget.dates import mois_budgetaire
-from budget.importation import construire_transactions
-from budget.ledger import FichierImporte, Ledger
+from budget.ledger import Ledger
 from budget.libelles import normaliser_libelle
 from budget.models import Compte, Source, Transaction
-from budget.parsers.credit_agricole import parser_ca_cartes, parser_ca_joint
-from budget.parsers.trade_republic import parser_trade_republic
 
 # Cadrage §11 : aucun test ne peut appeler un vrai modèle (FunctionModel et TestModel seulement)
 models.ALLOW_MODEL_REQUESTS = False
-
-INSTANT_FIGE = datetime(2026, 10, 14, 18, 32, tzinfo=timezone(timedelta(hours=2)))
 
 RACINE = Path(__file__).resolve().parent.parent
 DOSSIER_FIXTURES = RACINE / "tests" / "fixtures"
@@ -61,14 +54,6 @@ def ecrire_variante(source: Path, cible: Path, *remplacements: tuple[str, str]) 
 
 
 @pytest.fixture
-def chemin_fixtures() -> Callable[[str], Path]:
-    def _chemin(mois: str) -> Path:
-        return DOSSIER_FIXTURES / mois
-
-    return _chemin
-
-
-@pytest.fixture
 def chemin_donnees_reelles() -> Callable[[str], Path]:
     def _chemin(mois: str) -> Path:
         dossier = DOSSIER_DONNEES_REELLES / mois
@@ -83,20 +68,6 @@ def chemin_donnees_reelles() -> Callable[[str], Path]:
 def ledger_vide(tmp_path: Path) -> Iterator[Ledger]:
     with Ledger(tmp_path / "budget.sqlite") as ledger:
         yield ledger
-
-
-@cache
-def transactions_fixtures(mois: str, dossier: Path = DOSSIER_FIXTURES) -> tuple[Transaction, ...]:
-    """Transactions des trois extractions du mois, sans passer par la base (cartes, joint, TR)."""
-    compact = mois.replace("-", "")
-    cartes = parser_ca_cartes(dossier / mois / f"CA_CB_{compact}.csv")
-    joint = parser_ca_joint(dossier / mois / f"CA_CPTE_JOINT_{compact}.csv")
-    releve_tr = parser_trade_republic(dossier / mois / f"TR_{compact}.pdf")
-    return (
-        *construire_transactions([op for releve in cartes.cartes for op in releve.operations]),
-        *construire_transactions(joint.operations),
-        *construire_transactions(releve_tr.operations),
-    )
 
 
 _NUMEROS = itertools.count(1)
@@ -131,27 +102,3 @@ def fabriquer_transaction(
         carte=carte,
         montant=Decimal(montant),
     )
-
-
-def importer_synthetiques(ledger: Ledger, mois: str, transactions: list[Transaction]) -> None:
-    """Importe des transactions synthétiques du mois, un fichier par source."""
-    sources = sorted({t.source for t in transactions}, key=lambda s: s.value)
-    ledger.enregistrer_import(
-        mois,
-        [
-            FichierImporte(
-                source=source,
-                fichier=f"synthetique_{source.value}",
-                empreinte="0" * 64,
-                transactions=tuple(t for t in transactions if t.source is source),
-            )
-            for source in sources
-        ],
-    )
-
-
-@pytest.fixture
-def horloge_figee() -> Iterator[datetime]:
-    """Horloge figée : journal et horodatages déterministes."""
-    with horloge.figer(INSTANT_FIGE):
-        yield INSTANT_FIGE

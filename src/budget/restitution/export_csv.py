@@ -1,7 +1,7 @@
-"""`budget export` : CSV du mois classé (jalon 1, spec 07).
+"""`budget export` : CSV du mois classé (cadrage §8).
 
 UTF-8 avec BOM, séparateur `;`, montants `-3116,50` sans séparateur de milliers ni symbole,
-dates `JJ/MM/AAAA`.
+dates `JJ/MM/AAAA`. Une ligne par débit et par avoir carte (RG-19).
 """
 
 import csv
@@ -9,10 +9,8 @@ from collections.abc import Sequence
 from decimal import Decimal
 from pathlib import Path
 
-from budget.classement.modeles import Classement
 from budget.errors import ControleError
 from budget.ledger import Ledger
-from budget.models import Transaction
 from budget.restitution.operations import LigneOperation, lignes_operations
 
 COLONNES = (
@@ -21,11 +19,9 @@ COLONNES = (
     "Compte",
     "Libellé",
     "Montant",
-    "Nature",
     "Catégorie",
     "Sous-catégorie",
-    "Exceptionnel",
-    "Lien",
+    "Comptée",
     "Règle appliquée",
 )
 
@@ -47,26 +43,13 @@ def ecrire_csv(lignes: Sequence[LigneOperation], chemin: Path) -> Path:
                     ligne.compte,
                     ligne.libelle,
                     montant_csv(ligne.montant),
-                    ligne.nature,
                     ligne.categorie,
                     ligne.sous_categorie,
-                    "oui" if ligne.exceptionnel else "",
-                    ligne.lien,
+                    ligne.comptee,
                     ligne.regle,
                 )
             )
     return chemin
-
-
-def references_liens(ledger: Ledger, mois: str) -> dict[str, tuple[Transaction, Classement | None]]:
-    """Transactions des autres mois importés, pour retrouver une dépense liée (RG-07)."""
-    references: dict[str, tuple[Transaction, Classement | None]] = {}
-    for autre in ledger.mois_importes():
-        if autre == mois:
-            continue
-        classements = {c.transaction_id: c for c in ledger.classements(autre)}
-        references.update((t.id, (t, classements.get(t.id))) for t in ledger.transactions(autre))
-    return references
 
 
 def exporter_mois(ledger: Ledger, mois: str, dossier: Path) -> tuple[Path, int]:
@@ -80,7 +63,5 @@ def exporter_mois(ledger: Ledger, mois: str, dossier: Path) -> tuple[Path, int]:
         raise ControleError(
             f"mois {mois} non classé : lancer d'abord `budget classify --mois {mois}`"
         )
-    lignes = lignes_operations(
-        ledger.transactions(mois), classements, references_liens(ledger, mois)
-    )
+    lignes = lignes_operations(ledger.transactions(mois), classements)
     return ecrire_csv(lignes, dossier / f"budget_{mois}.csv"), len(lignes)

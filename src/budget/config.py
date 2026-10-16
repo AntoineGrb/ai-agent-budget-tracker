@@ -1,169 +1,31 @@
 """Chargement et validation du fichier de contexte du foyer (cadrage §10)."""
 
-import re
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Annotated, Any, Literal, Self
+from typing import Any, Literal
 
 import yaml
-from pydantic import (
-    BaseModel,
-    BeforeValidator,
-    ConfigDict,
-    Field,
-    StringConstraints,
-    ValidationError,
-    field_validator,
-    model_validator,
-)
+from pydantic import BaseModel, ConfigDict, ValidationError
 from pydantic_core import ErrorDetails
 
-from budget.categories import SousCategorie
 from budget.errors import ConfigError
-from budget.models import MOTIF_CARTE
 from budget.montants import Montant
-
-Carte = Annotated[str, StringConstraints(pattern=MOTIF_CARTE)]
-Jour = Annotated[int, Field(ge=1, le=31)]
-NumeroMois = Annotated[int, Field(ge=1, le=12)]
-Pourcentage = Annotated[Montant, Field(ge=0)]
-
-
-def _en_liste(valeur: Any) -> Any:
-    return [valeur] if isinstance(valeur, int) else valeur
-
-
-ListeMois = Annotated[tuple[NumeroMois, ...] | None, BeforeValidator(_en_liste)]
 
 
 class _Modele(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
-class AvecCritere(_Modele):
-    """Élément reconnu sur une opération par au moins un critère."""
-
-    ics: str | None = None
-    libelle_contient: str | None = None
-    type_operation: str | None = None
-
-    @model_validator(mode="after")
-    def _au_moins_un_critere(self) -> Self:
-        if not (self.ics or self.libelle_contient or self.type_operation):
-            raise ValueError(
-                "au moins un critère est requis parmi ics, libelle_contient, type_operation"
-            )
-        return self
-
-
-class CompteJoint(_Modele):
-    banque: Literal["credit_agricole"]
-    cartes_actives: tuple[Carte, ...]
-    cartes_inactives: tuple[Carte, ...] = ()
-
-
-class ComptePerso(_Modele):
-    banque: Literal["trade_republic"]
-
-
-class Comptes(_Modele):
-    joint: CompteJoint
-    perso: ComptePerso
-
-
-class Salaire(_Modele):
-    nom: str
-    libelle_contient: str
-    periode_regex: str | None = None  # RG-04
-    montant_approx: Montant
-
-    @field_validator("periode_regex")
-    @classmethod
-    def _regex_un_groupe(cls, valeur: str | None) -> str | None:
-        if valeur is None:
-            return None
-        try:
-            motif = re.compile(valeur)
-        except re.error as erreur:
-            raise ValueError(f"expression régulière invalide ({erreur})") from erreur
-        if motif.groups != 1:
-            raise ValueError(
-                f"l'expression doit contenir exactement un groupe capturant, "
-                f"{motif.groups} trouvé(s)"
-            )
-        return valeur
-
-
-class FenetreSalaire(_Modele):  # RG-04
-    du_jour: Jour
-    au_jour_mois_suivant: Jour
-
-
-class Dotation(_Modele):  # RG-05
-    nom: str
-    libelle_contient: str
-    montant: Montant
-
-
-class PaiementFinance(AvecCritere):  # RG-08
-    nom: str
-    periodicite: Literal["mensuelle", "trimestrielle", "semestrielle", "annuelle"] | None = None
-
-
-class Provision(_Modele):  # RG-08
-    reprises_libelle_contient: str
-    paiements_finances: tuple[PaiementFinance, ...] = ()
-
-
-class ChargeFixe(AvecCritere):  # RG-18
-    nom: str
-    montant: Montant
-    tolerance_pct: Pourcentage | None = None
-    sous_categorie: SousCategorie
-
-
-class Enveloppes(_Modele):
-    joint_courant: Montant
-    perso: Montant
-
-
-class DepenseAnnuelle(_Modele):
-    nom: str
-    mois: ListeMois = None
-    montant: Montant | None = None
-    sous_categorie: SousCategorie
-
-
-class MoisParticulier(_Modele):
-    mois: NumeroMois
-    sens: Literal["revenu", "depense"]
-    motif: str
-    montant_approx: Montant | None = None
-
-
 class Seuils(_Modele):
-    exceptionnel: Montant  # RG-15
     amazon_auto: Montant  # RG-13
-    ecart_charge_fixe_pct: Pourcentage  # RG-18
 
 
 class Llm(_Modele):
     modele_categorisation: str = "anthropic:claude-haiku-4-5"
-    modele_synthese: str = "anthropic:claude-sonnet-5"
 
 
 class Contexte(_Modele):
-    version: Literal[1]
-    comptes: Comptes
-    salaires: tuple[Salaire, ...]
-    fenetre_salaire: FenetreSalaire
-    dotations: tuple[Dotation, ...]
-    provision: Provision
-    charges_fixes: tuple[ChargeFixe, ...]
-    enveloppes: Enveloppes
-    budgets_sous_categories: dict[SousCategorie, Montant | None] = Field(default_factory=dict)
-    depenses_annuelles_connues: tuple[DepenseAnnuelle, ...] = ()
-    mois_particuliers: tuple[MoisParticulier, ...] = ()
+    version: Literal[2]
     seuils: Seuils
     llm: Llm = Llm()
 
@@ -207,6 +69,11 @@ def charger_contexte(chemin: Path) -> Contexte:
         raise ConfigError(f"YAML illisible dans {chemin}", [str(erreur)]) from erreur
     if not isinstance(donnees, dict):
         raise ConfigError(f"Le fichier {chemin} doit contenir un dictionnaire YAML à la racine")
+    if donnees.get("version") == 1:
+        raise ConfigError(
+            f"{chemin} est au format version 1, antérieur au recadrage d'octobre 2026 : le "
+            "remplacer par une copie de contexte.example.yaml (version 2)"
+        )
     try:
         return Contexte.model_validate(donnees)
     except ValidationError as erreur:
@@ -235,12 +102,8 @@ def _decrire(detail: ErrorDetails) -> str:
         message = "clé inconnue"
     elif type_erreur == "missing":
         message = "clé obligatoire absente"
-    elif type_erreur == "enum":
-        message = f"valeur inconnue {valeur!r}, attendu l'une de : {ctx.get('expected')}"
     elif type_erreur == "literal_error":
         message = f"valeur {valeur!r} invalide, attendu : {ctx.get('expected')}"
-    elif type_erreur == "string_pattern_mismatch":
-        message = f"valeur {valeur!r} invalide, format attendu {ctx.get('pattern')}"
     elif type_erreur in ("greater_than_equal", "less_than_equal"):
         borne = ctx.get("ge", ctx.get("le"))
         sens = "supérieure" if type_erreur == "greater_than_equal" else "inférieure"

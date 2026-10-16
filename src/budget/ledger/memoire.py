@@ -1,4 +1,4 @@
-"""Lecture et écriture des questions, règles, décisions, propositions et tags (specs 06, 07).
+"""Lecture et écriture des questions, règles, décisions et propositions (cadrage §7).
 
 Chaque réponse est écrite immédiatement, dans sa propre transaction SQL : quitter le dialogue en
 cours de route ne perd rien.
@@ -10,10 +10,10 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from budget.categories import SousCategorie
+from budget.categories import Imputation, SousCategorie
 from budget.errors import ControleError, RegleError
 from budget.horloge import horodatage
-from budget.models import Nature, Source
+from budget.models import Source
 from budget.montants import depuis_centimes, en_centimes
 from budget.questions.modeles import Question
 from budget.regles import Critere, Decision, Regle, TypeRegle, verifier_nouvelle_regle
@@ -26,23 +26,13 @@ _COLONNES_REGLE = (
     "valeur",
     "montant_min_centimes",
     "montant_max_centimes",
-    "nature",
     "sous_categorie",
-    "detail",
+    "non_comptee",
     "active",
     "creee_le",
     "desactivee_le",
 )
-_COLONNES_DECISION = (
-    "transaction_id",
-    "question_id",
-    "nature",
-    "sous_categorie",
-    "detail",
-    "lien_id",
-    "mois_paie",
-    "regle_id",
-)
+_COLONNES_DECISION = ("transaction_id", "question_id", "sous_categorie", "non_comptee", "regle_id")
 
 
 def _centimes(valeur: object) -> int | None:
@@ -51,6 +41,18 @@ def _centimes(valeur: object) -> int | None:
     if not isinstance(valeur, int):
         raise ControleError(f"montant de règle non entier en base : {valeur!r}")
     return valeur
+
+
+def _instant(valeur: object) -> datetime | None:
+    return datetime.fromisoformat(str(valeur)) if valeur is not None else None
+
+
+def _sous_categorie(valeur: object) -> SousCategorie | None:
+    return SousCategorie(str(valeur)) if valeur is not None else None
+
+
+def _entier(valeur: object) -> int | None:
+    return int(str(valeur)) if valeur is not None else None
 
 
 def _regle_depuis_ligne(ligne: Sequence[object]) -> Regle:
@@ -64,21 +66,12 @@ def _regle_depuis_ligne(ligne: Sequence[object]) -> Regle:
         valeur=str(v["valeur"]),
         montant_min=depuis_centimes(minimum) if minimum is not None else None,
         montant_max=depuis_centimes(maximum) if maximum is not None else None,
-        nature=Nature(str(v["nature"])) if v["nature"] is not None else None,
-        sous_categorie=SousCategorie(str(v["sous_categorie"])) if v["sous_categorie"] else None,
-        detail=str(v["detail"]) if v["detail"] is not None else None,
+        sous_categorie=_sous_categorie(v["sous_categorie"]),
+        non_comptee=bool(v["non_comptee"]),
         active=bool(v["active"]),
         creee_le=_instant(v["creee_le"]),
         desactivee_le=_instant(v["desactivee_le"]),
     )
-
-
-def _instant(valeur: object) -> datetime | None:
-    return datetime.fromisoformat(str(valeur)) if valeur is not None else None
-
-
-def _sous_categorie(valeur: object) -> SousCategorie | None:
-    return SousCategorie(str(valeur)) if valeur is not None else None
 
 
 def lire_regles(connexion: sqlite3.Connection) -> list[Regle]:
@@ -93,13 +86,10 @@ def lire_decisions(connexion: sqlite3.Connection) -> dict[str, Decision]:
         v = dict(zip(_COLONNES_DECISION, ligne, strict=True))
         decision = Decision(
             transaction_id=str(v["transaction_id"]),
-            question_id=int(str(v["question_id"])),
-            nature=Nature(str(v["nature"])),
-            sous_categorie=SousCategorie(str(v["sous_categorie"])) if v["sous_categorie"] else None,
-            detail=str(v["detail"]) if v["detail"] is not None else None,
-            lien_id=str(v["lien_id"]) if v["lien_id"] is not None else None,
-            mois_paie=str(v["mois_paie"]) if v["mois_paie"] is not None else None,
-            regle_id=int(str(v["regle_id"])) if v["regle_id"] is not None else None,
+            question_id=_entier(v["question_id"]),
+            sous_categorie=_sous_categorie(v["sous_categorie"]),
+            non_comptee=bool(v["non_comptee"]),
+            regle_id=_entier(v["regle_id"]),
         )
         decisions[decision.transaction_id] = decision
     return decisions
@@ -112,8 +102,8 @@ def inserer_regle(
     verifier_nouvelle_regle(regle, lire_regles(connexion))
     curseur = connexion.execute(
         "INSERT INTO regles (type, source, critere, valeur, montant_min_centimes, "
-        "montant_max_centimes, nature, sous_categorie, detail, active, creee_le, question_id) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "montant_max_centimes, sous_categorie, non_comptee, active, creee_le, question_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             regle.type.value,
             regle.source.value,
@@ -121,9 +111,8 @@ def inserer_regle(
             regle.valeur,
             en_centimes(regle.montant_min) if regle.montant_min is not None else None,
             en_centimes(regle.montant_max) if regle.montant_max is not None else None,
-            regle.nature.value if regle.nature is not None else None,
             regle.sous_categorie.value if regle.sous_categorie is not None else None,
-            regle.detail,
+            int(regle.non_comptee),
             int(regle.active),
             horodatage(),
             question_id,
@@ -136,15 +125,9 @@ def inserer_regle(
 def marquer_question_posee(connexion: sqlite3.Connection, question: Question) -> int:
     """Enregistre la question à sa première pose (sans effet ensuite) et renvoie son numéro."""
     connexion.execute(
-        "INSERT INTO questions (transaction_id, contrepartie_id, type, motif, posee_le) "
-        "VALUES (?, ?, ?, ?, ?) ON CONFLICT (transaction_id) DO NOTHING",
-        (
-            question.transaction.id,
-            question.contrepartie.id if question.contrepartie is not None else None,
-            question.type.value,
-            question.motif,
-            horodatage(),
-        ),
+        "INSERT INTO questions (transaction_id, type, motif, posee_le) "
+        "VALUES (?, ?, ?, ?) ON CONFLICT (transaction_id) DO NOTHING",
+        (question.transaction.id, question.type.value, question.motif, horodatage()),
     )
     ligne = connexion.execute(
         "SELECT id FROM questions WHERE transaction_id = ?", (question.transaction.id,)
@@ -153,45 +136,33 @@ def marquer_question_posee(connexion: sqlite3.Connection, question: Question) ->
 
 
 def enregistrer_reponse(
-    connexion: sqlite3.Connection,
-    question: Question,
-    decisions: Sequence[Decision],
-    regle: Regle | None,
+    connexion: sqlite3.Connection, question: Question, decision: Decision, regle: Regle | None
 ) -> Regle | None:
-    """Question répondue, règle éventuelle et décision de chaque côté ; en transaction."""
-    attendus = {t.id for t in question.transactions}
-    if {d.transaction_id for d in decisions} != attendus or len(decisions) != len(attendus):
-        raise ControleError(
-            "réponse incohérente : une décision par opération de la question est attendue"
-        )
+    """Question répondue, règle éventuelle et décision ; à appeler dans une transaction ouverte."""
+    if decision.transaction_id != question.transaction.id:
+        raise ControleError("réponse incohérente : la décision porte sur une autre opération")
     question_id = marquer_question_posee(connexion, question)
     maintenant = horodatage()
     connexion.execute(
         "UPDATE questions SET repondue_le = ? WHERE id = ?", (maintenant, question_id)
     )
     creee = inserer_regle(connexion, regle, question_id) if regle is not None else None
-    connexion.executemany(
+    connexion.execute(
         f"INSERT INTO decisions ({', '.join(_COLONNES_DECISION)}, decidee_le) "
         f"VALUES ({', '.join('?' for _ in _COLONNES_DECISION)}, ?)",
         (
-            (
-                d.transaction_id,
-                question_id,
-                d.nature.value,
-                d.sous_categorie.value if d.sous_categorie is not None else None,
-                d.detail,
-                d.lien_id,
-                d.mois_paie,
-                creee.id if creee is not None else None,
-                maintenant,
-            )
-            for d in decisions
+            decision.transaction_id,
+            question_id,
+            decision.sous_categorie.value if decision.sous_categorie is not None else None,
+            int(decision.non_comptee),
+            creee.id if creee is not None else None,
+            maintenant,
         ),
     )
     return creee
 
 
-# Règles : désactivation et usage (spec 07) ---------------------------------------------------
+# Règles : désactivation et usage -----------------------------------------------------------------
 
 
 def desactiver_regle(connexion: sqlite3.Connection, numero: int) -> Regle:
@@ -227,7 +198,7 @@ def mois_de_regle(connexion: sqlite3.Connection, numero: int) -> list[str]:
     return [str(m) for (m,) in connexion.execute(requete, (numero,))]
 
 
-# Propositions du catégoriseur (spec 07) -------------------------------------------------------
+# Propositions du catégoriseur --------------------------------------------------------------------
 
 
 class PropositionEnregistree(BaseModel):
@@ -239,15 +210,17 @@ class PropositionEnregistree(BaseModel):
     cle_marchand: str
     proposee: SousCategorie | None
     modele: str | None
-    corrigee: SousCategorie | None
+    corrigee: Imputation | None  # sous-catégorie ou « non compté » saisi par l'utilisateur
     regle_id: int | None
     proposee_le: datetime
     validee_le: datetime | None
 
     @property
-    def retenue(self) -> SousCategorie | None:
+    def retenue(self) -> Imputation | None:
         """La correction de l'utilisateur prime sur la proposition."""
-        return self.corrigee or self.proposee
+        if self.corrigee is not None:
+            return self.corrigee
+        return Imputation(sous_categorie=self.proposee) if self.proposee is not None else None
 
 
 _COLONNES_PROPOSITION = (
@@ -258,6 +231,7 @@ _COLONNES_PROPOSITION = (
     "sous_categorie_proposee",
     "modele",
     "sous_categorie_corrigee",
+    "corrigee_non_comptee",
     "regle_id",
     "proposee_le",
     "validee_le",
@@ -266,6 +240,10 @@ _COLONNES_PROPOSITION = (
 
 def _proposition_depuis_ligne(ligne: Sequence[object]) -> PropositionEnregistree:
     v = dict(zip(_COLONNES_PROPOSITION, ligne, strict=True))
+    corrigee = Imputation(
+        sous_categorie=_sous_categorie(v["sous_categorie_corrigee"]),
+        non_comptee=bool(v["corrigee_non_comptee"]),
+    )
     return PropositionEnregistree(
         id=int(str(v["id"])),
         mois=str(v["mois"]),
@@ -273,8 +251,8 @@ def _proposition_depuis_ligne(ligne: Sequence[object]) -> PropositionEnregistree
         cle_marchand=str(v["cle_marchand"]),
         proposee=_sous_categorie(v["sous_categorie_proposee"]),
         modele=str(v["modele"]) if v["modele"] is not None else None,
-        corrigee=_sous_categorie(v["sous_categorie_corrigee"]),
-        regle_id=int(str(v["regle_id"])) if v["regle_id"] is not None else None,
+        corrigee=corrigee if corrigee.decidee else None,
+        regle_id=_entier(v["regle_id"]),
         proposee_le=datetime.fromisoformat(str(v["proposee_le"])),
         validee_le=_instant(v["validee_le"]),
     )
@@ -331,24 +309,23 @@ def enregistrer_propositions(
 
 
 def corriger_proposition(
-    connexion: sqlite3.Connection,
-    mois: str,
-    source: Source,
-    cle: str,
-    sous_categorie: SousCategorie,
+    connexion: sqlite3.Connection, mois: str, source: Source, cle: str, imputation: Imputation
 ) -> None:
     """Correction saisie dans le tableau : elle prime sur la proposition et survit à un `q`."""
+    sous_categorie = imputation.sous_categorie.value if imputation.sous_categorie else None
+    non_comptee = int(imputation.non_comptee)
     existante = propositions_en_attente(connexion).get((source, cle))
     if existante is not None:
         connexion.execute(
-            "UPDATE propositions SET sous_categorie_corrigee = ? WHERE id = ?",
-            (sous_categorie.value, existante.id),
+            "UPDATE propositions SET sous_categorie_corrigee = ?, corrigee_non_comptee = ? "
+            "WHERE id = ?",
+            (sous_categorie, non_comptee, existante.id),
         )
         return
     connexion.execute(
         "INSERT INTO propositions (mois, source, cle_marchand, sous_categorie_corrigee, "
-        "proposee_le) VALUES (?, ?, ?, ?, ?)",
-        (mois, source.value, cle, sous_categorie.value, horodatage()),
+        "corrigee_non_comptee, proposee_le) VALUES (?, ?, ?, ?, ?, ?)",
+        (mois, source.value, cle, sous_categorie, non_comptee, horodatage()),
     )
 
 
@@ -363,20 +340,3 @@ def valider_proposition(connexion: sqlite3.Connection, regle: Regle) -> Regle:
         (creee.id, horodatage(), existante.id),
     )
     return creee
-
-
-# Tags exceptionnels (RG-15) --------------------------------------------------------------------
-
-
-def lire_exceptionnels(connexion: sqlite3.Connection) -> dict[str, bool]:
-    requete = "SELECT transaction_id, exceptionnel FROM exceptionnels"
-    return {str(t): bool(e) for t, e in connexion.execute(requete)}
-
-
-def enregistrer_exceptionnel(
-    connexion: sqlite3.Connection, transaction_id: str, exceptionnel: bool
-) -> None:
-    connexion.execute(
-        "INSERT INTO exceptionnels (transaction_id, exceptionnel, decide_le) VALUES (?, ?, ?)",
-        (transaction_id, int(exceptionnel), horodatage()),
-    )

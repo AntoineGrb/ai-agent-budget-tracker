@@ -1,41 +1,25 @@
-"""Traduction d'une réponse en décisions et en règle éventuelle (spec 06). Fonctions pures."""
+"""Traduction d'une réponse en décision et en règle éventuelle. Fonctions pures."""
 
 import re
 from decimal import Decimal
 
+from budget.categories import Imputation
 from budget.errors import ParseError
 from budget.libelles import normaliser_libelle
 from budget.models import Transaction
 from budget.montants import formater_montant, parse_montant
-from budget.questions.modeles import Question, Reponse, TypeQuestion
+from budget.questions.modeles import Question, TypeQuestion
 from budget.regles import Critere, Decision, Regle, TypeRegle
 
 _PLAGE = re.compile(r"\s*([0-9][0-9 ,.]*?)\s*-\s*([0-9][0-9 ,.]*?)\s*")
 
 
-def decisions_pour(question: Question, reponse: Reponse) -> list[Decision]:
-    """Une décision par opération de la question ; pour une paire, l'autre côté suit (RG-07)."""
-    decisions = [
-        Decision(
-            transaction_id=question.transaction.id,
-            nature=reponse.nature,
-            sous_categorie=reponse.sous_categorie,
-            detail=reponse.detail,
-            lien_id=reponse.lien_id,
-            mois_paie=reponse.mois_paie,
-        )
-    ]
-    if question.contrepartie is not None:
-        decisions.append(
-            Decision(
-                transaction_id=question.contrepartie.id,
-                nature=reponse.nature,
-                sous_categorie=reponse.sous_categorie,
-                detail=f"{reponse.detail}:contrepartie" if reponse.detail else None,
-                lien_id=reponse.lien_id,
-            )
-        )
-    return decisions
+def decision_pour(question: Question, reponse: Imputation) -> Decision:
+    return Decision(
+        transaction_id=question.transaction.id,
+        sous_categorie=reponse.sous_categorie,
+        non_comptee=reponse.non_comptee,
+    )
 
 
 def critere_propose(question: Question) -> tuple[TypeRegle, Critere, str]:
@@ -80,7 +64,7 @@ def lire_plage(texte: str, transaction: Transaction) -> tuple[Decimal, Decimal]:
 
 def construire_regle(
     question: Question,
-    reponse: Reponse,
+    reponse: Imputation,
     *,
     critere: Critere | None = None,
     valeur: str | None = None,
@@ -96,9 +80,8 @@ def construire_regle(
         valeur=valeur or valeur_defaut,
         montant_min=montant_min,
         montant_max=montant_max,
-        nature=reponse.nature,
         sous_categorie=reponse.sous_categorie,
-        detail=reponse.detail,
+        non_comptee=reponse.non_comptee,
     )
 
 

@@ -393,7 +393,7 @@ def _operation_joint(cellules: list[str], fichier: str, ligne: int) -> Operation
         libelle=libelle,
         libelle_brut=cellule_libelle,
         ics=ics_trouves[0] if ics_trouves else None,
-        carte=_carte_du_libelle(libelle),  # RG-17 : alerte à l'étape 5
+        carte=_carte_du_libelle(libelle),
         montant=montant,
     )
 

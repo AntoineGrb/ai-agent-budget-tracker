@@ -46,12 +46,6 @@ def formater_montant(montant: Decimal) -> str:
     return f"{signe}{corps} €"
 
 
-def formater_pourcentage(valeur: Decimal, *, signe: bool = False) -> str:
-    """Affiche un pourcentage au format français : `Decimal("-17.70")` → `"-17,70 %"`."""
-    texte = f"{valeur:+f}" if signe else f"{valeur:f}"
-    return f"{texte.replace('.', ',')} %"
-
-
 def en_centimes(montant: Decimal) -> int:
     """Montant exact en centimes : `Decimal("-3116.50")` → `-311650`.
 

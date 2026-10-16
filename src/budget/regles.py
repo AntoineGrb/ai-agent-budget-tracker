@@ -1,7 +1,8 @@
-"""Mémoire des réponses : règles apprises et décisions (specs 06 et 07, cadrage §7).
+"""Mémoire des réponses : règles apprises et décisions (cadrage §7).
 
 Une décision porte sur une seule opération ; une règle s'applique à toutes les opérations qui lui
-correspondent. Une décision prime sur une règle.
+correspondent. Une décision prime sur une règle. Les deux portent une imputation : sous-catégorie
+ou « non compté ».
 """
 
 from collections.abc import Iterable, Mapping, Sequence
@@ -10,12 +11,12 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field, model_validator
 
-from budget.categories import SousCategorie
+from budget.categories import Imputation
 from budget.errors import ControleError, RegleError
 from budget.libelles import cle_marchand, normaliser_libelle
-from budget.models import MOTIF_MOIS, Nature, Source, Transaction
+from budget.models import Source, Transaction
 from budget.montants import Montant, formater_montant
 
 ICS_PAYPAL = "LU96ZZZ0000000000000000058"  # RG-14
@@ -26,8 +27,8 @@ SOURCES_CARTE = frozenset({Source.CA_CB, Source.TR})
 
 class TypeRegle(StrEnum):
     VIREMENT = "virement"
-    PRELEVEMENT = "prelevement"
-    MARCHAND_CARTE = "marchand_carte"  # clé marchand d'un paiement carte -> sous-catégorie
+    PRELEVEMENT = "prelevement"  # prélèvement et tout autre débit hors carte
+    MARCHAND_CARTE = "marchand_carte"  # clé marchand d'un paiement carte
     TOUJOURS_DEMANDER = "toujours_demander"
 
 
@@ -38,12 +39,9 @@ class Critere(StrEnum):
 
 
 _RANG_CRITERE = {Critere.ICS: 3, Critere.LIBELLE_EXACT: 2, Critere.LIBELLE_PREFIXE: 1}
-_NATURES_AVEC_SOUS_CATEGORIE = {Nature.DEPENSE, Nature.REMBOURSEMENT}
 
 
-class Regle(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
+class Regle(Imputation):
     id: int | None = None  # None avant insertion
     type: TypeRegle
     source: Source
@@ -51,9 +49,6 @@ class Regle(BaseModel):
     valeur: str = Field(min_length=1)  # ICS, libellé normalisé, ou clé marchand
     montant_min: Montant | None = None  # signés ; min == max pour un montant exact
     montant_max: Montant | None = None
-    nature: Nature | None = None  # None pour toujours_demander et marchand_carte
-    sous_categorie: SousCategorie | None = None
-    detail: str | None = None
     active: bool = True
     creee_le: datetime | None = None  # renseignées à la lecture en base
     desactivee_le: datetime | None = None
@@ -70,33 +65,24 @@ class Regle(BaseModel):
             raise ValueError(f"plage de montant inversée : {self.montant_min} > {self.montant_max}")
         if self.type is TypeRegle.VIREMENT and self.montant_min is None:
             raise ValueError("une règle de virement a obligatoirement une condition de montant")
-        if self.type is TypeRegle.MARCHAND_CARTE:
-            return self._coherence_marchand()
         if self.type is TypeRegle.TOUJOURS_DEMANDER:
-            if self.nature is not None or self.sous_categorie is not None:
-                raise ValueError("une règle « toujours demander » ne porte aucun résultat")
+            if self.decidee:
+                raise ValueError("une règle « toujours demander » ne porte aucune imputation")
             return self
-        if self.nature is None:
-            raise ValueError("la nature est obligatoire")
-        if self.nature is Nature.LIEN_DEPENSE:
-            raise ValueError("un lien à une dépense est un cas unique : jamais une règle (RG-07)")
-        if self.nature in _NATURES_AVEC_SOUS_CATEGORIE and self.sous_categorie is None:
-            raise ValueError(f"la sous-catégorie est obligatoire pour la nature {self.nature}")
+        if not self.decidee:
+            raise ValueError("la règle doit fixer une sous-catégorie ou « non compté »")
+        if self.type is TypeRegle.MARCHAND_CARTE:
+            self._coherence_marchand()
         return self
 
-    def _coherence_marchand(self) -> Self:
-        """Règle marchand : paiement carte, sous-catégorie seule, jamais Amazon (RG-13)."""
+    def _coherence_marchand(self) -> None:
+        """Règle marchand : paiement carte, jamais sur un ICS, jamais Amazon (RG-13)."""
         if self.source not in SOURCES_CARTE:
             raise ValueError("une règle marchand porte sur les sources ca_cb ou tr")
         if self.critere is Critere.ICS:
             raise ValueError("une règle marchand ne porte pas sur un ICS")
-        if self.nature is not None:
-            raise ValueError("une règle marchand ne fixe pas la nature, qui vient du sens")
-        if self.sous_categorie is None:
-            raise ValueError("la sous-catégorie est obligatoire pour une règle marchand")
         if self.valeur.startswith(PREFIXES_AMAZON):
             raise ValueError("RG-13 : un marchand Amazon n'est jamais couvert par une règle")
-        return self
 
     def s_applique(self, transaction: Transaction) -> bool:
         if not self.active or transaction.source is not self.source:
@@ -129,8 +115,8 @@ class Regle(BaseModel):
         return (_RANG_CRITERE[self.critere], montant, len(self.valeur))
 
     @property
-    def resultat(self) -> tuple[Nature | None, SousCategorie | None, str | None]:
-        return (self.nature, self.sous_categorie, self.detail)
+    def resultat(self) -> Imputation:
+        return Imputation(sous_categorie=self.sous_categorie, non_comptee=self.non_comptee)
 
     def recouvre(self, autre: "Regle") -> bool:
         """Conditions de montant qui se recouvrent ; l'absence de condition recouvre tout."""
@@ -139,35 +125,37 @@ class Regle(BaseModel):
         assert self.montant_max is not None and autre.montant_max is not None
         return self.montant_min <= autre.montant_max and autre.montant_min <= self.montant_max
 
+    def condition_montant(self) -> str:
+        if self.montant_min is None or self.montant_max is None:
+            return "sans condition"
+        if self.montant_min == self.montant_max:
+            return f"montant {formater_montant(self.montant_min)}"
+        return f"de {formater_montant(self.montant_min)} à {formater_montant(self.montant_max)}"
+
+    def libelle_resultat(self) -> str:
+        return self.libelle_imputation() or "Toujours demander"
+
     def decrire(self) -> str:
         """Description sans libellé complet : type, source, critère, condition, résultat."""
-        if self.montant_min is None or self.montant_max is None:
-            condition = "sans condition de montant"
-        elif self.montant_min == self.montant_max:
-            condition = f"montant {formater_montant(self.montant_min)}"
-        else:
-            condition = (
-                f"montant de {formater_montant(self.montant_min)} "
-                f"à {formater_montant(self.montant_max)}"
-            )
-        cible = self.sous_categorie or self.detail or self.nature or "toujours demander"
         numero = f"règle n° {self.id}" if self.id is not None else "règle"
-        return f"{numero} ({self.type}, {self.source}, {self.critere}, {condition}) -> {cible}"
+        return (
+            f"{numero} ({self.type}, {self.source}, {self.critere}, {self.condition_montant()}) "
+            f"-> {self.libelle_resultat()}"
+        )
 
 
-class Decision(BaseModel):
+class Decision(Imputation):
     """Réponse à une question, rattachée à une seule transaction."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
 
     transaction_id: str
     question_id: int | None = None  # None avant insertion
-    nature: Nature
-    sous_categorie: SousCategorie | None = None
-    detail: str | None = None
-    lien_id: str | None = None  # RG-07
-    mois_paie: str | None = Field(default=None, pattern=MOTIF_MOIS)  # RG-04
     regle_id: int | None = None  # règle créée à partir de cette réponse
+
+    @model_validator(mode="after")
+    def _decidee(self) -> Self:
+        if not self.decidee:
+            raise ValueError("une décision fixe une sous-catégorie ou « non compté »")
+        return self
 
 
 @dataclass(frozen=True)
@@ -176,7 +164,6 @@ class Memoire:
 
     decisions: Mapping[str, Decision] = field(default_factory=dict)
     regles: Sequence[Regle] = ()
-    exceptionnels: Mapping[str, bool] = field(default_factory=dict)  # RG-15 : réponses oui/non
 
 
 def est_rg14(transaction: Transaction) -> bool:
@@ -186,7 +173,7 @@ def est_rg14(transaction: Transaction) -> bool:
 
 
 def regles_applicables(regles: Iterable[Regle], transaction: Transaction) -> list[Regle]:
-    """Règles actives qui correspondent ; les règles marchand carte attendent l'étape 7."""
+    """Règles actives qui correspondent, hors règles marchand (paiements carte seulement)."""
     return [
         r for r in regles if r.type is not TypeRegle.MARCHAND_CARTE and r.s_applique(transaction)
     ]

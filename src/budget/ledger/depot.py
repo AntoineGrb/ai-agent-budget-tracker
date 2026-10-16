@@ -10,14 +10,14 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict
 
-from budget.categories import SousCategorie
+from budget.categories import Imputation, SousCategorie
 from budget.classement.modeles import Classement, OrigineClassement, ResultatClassement
 from budget.errors import ControleError, LedgerError
 from budget.horloge import horodatage
 from budget.ledger import memoire
 from budget.ledger.memoire import PropositionEnregistree
 from budget.ledger.migrations import appliquer_migrations, version
-from budget.models import Nature, Source, Transaction
+from budget.models import Source, Transaction
 from budget.montants import depuis_centimes, en_centimes
 from budget.questions.modeles import Question
 from budget.regles import Decision, Memoire, Regle
@@ -43,14 +43,10 @@ _COLONNES = (
 )
 _COLONNES_CLASSEMENT = (
     "transaction_id",
-    "nature",
     "sous_categorie",
-    "mois_rattachement",
+    "non_comptee",
     "origine",
     "detail",
-    "contrepartie_id",
-    "lien_id",
-    "exceptionnel",
     "regle_id",
 )
 _TAILLE_LOT = 500
@@ -235,66 +231,40 @@ class Ledger:
                 yield str(mois)
 
     def enregistrer_classement(self, mois: str, resultat: ResultatClassement) -> None:
-        """Remplace atomiquement le classement du mois : c'est une projection recalculable."""
+        """Remplace atomiquement le classement du mois : c'est une projection recalculable.
+
+        Seules les opérations suivies ont un classement (RG-19) : chacune une seule fois.
+        """
         if resultat.mois != mois:
             raise ControleError(f"classement du mois {resultat.mois} enregistré pour {mois}")
-        attendus = {
+        du_mois = {
             str(ligne[0])
             for ligne in self._connexion.execute(
                 "SELECT id FROM transactions WHERE mois_budgetaire = ?", (mois,)
             )
         }
         recus = [c.transaction_id for c in resultat.classements]
-        if len(set(recus)) != len(recus) or set(recus) != attendus:
+        if len(set(recus)) != len(recus) or not set(recus) <= du_mois:
             raise ControleError(
-                f"classement du mois {mois} incomplet ou incohérent : {len(attendus)} "
-                f"transaction(s) en base, {len(recus)} classement(s) reçus dont "
-                f"{len(set(recus) - attendus)} hors du mois et {len(recus) - len(set(recus))} "
-                "en double ; chaque transaction doit avoir exactement un classement"
+                f"classement du mois {mois} incohérent : {len(recus)} classement(s) reçus dont "
+                f"{len(set(recus) - du_mois)} hors du mois et {len(recus) - len(set(recus))} "
+                "en double"
             )
 
         self._connexion.execute("BEGIN IMMEDIATE")
         try:
-            for table, colonne in (
-                ("charges_fixes_transactions", "mois"),
-                ("charges_fixes_mois", "mois"),
-                ("alertes", "mois"),
-                ("classements", "mois_budgetaire"),
-            ):
-                self._connexion.execute(f"DELETE FROM {table} WHERE {colonne} = ?", (mois,))
+            self._connexion.execute("DELETE FROM classements WHERE mois_budgetaire = ?", (mois,))
             self._connexion.executemany(
                 f"INSERT INTO classements (mois_budgetaire, {', '.join(_COLONNES_CLASSEMENT)}) "
                 f"VALUES (?, {', '.join('?' for _ in _COLONNES_CLASSEMENT)})",
                 ((mois, *_classement_vers_ligne(c)) for c in resultat.classements),
             )
-            self._connexion.executemany(
-                "INSERT INTO alertes (mois, code, transaction_id, message) VALUES (?, ?, ?, ?)",
-                ((mois, a.code, a.transaction_id, a.message) for a in resultat.alertes),
-            )
-            for r in resultat.rapprochements:
-                self._connexion.execute(
-                    "INSERT INTO charges_fixes_mois (mois, nom, attendu_centimes, reel_centimes, "
-                    "seuil_pct, hors_seuil) VALUES (?, ?, ?, ?, ?, ?)",
-                    (
-                        mois,
-                        r.nom,
-                        en_centimes(r.attendu),
-                        en_centimes(r.reel) if r.reel is not None else None,
-                        str(r.seuil_pct),
-                        int(r.hors_seuil),
-                    ),
-                )
-                self._connexion.executemany(
-                    "INSERT INTO charges_fixes_transactions (mois, nom, transaction_id) "
-                    "VALUES (?, ?, ?)",
-                    ((mois, r.nom, transaction_id) for transaction_id in r.transaction_ids),
-                )
         except BaseException:
             self._connexion.execute("ROLLBACK")
             raise
         self._connexion.execute("COMMIT")
 
-    # Mémoire des réponses (spec 06) ------------------------------------------------------------
+    # Mémoire des réponses ----------------------------------------------------------------------
 
     def _en_transaction[T](self, action: Callable[[], T]) -> T:
         self._connexion.execute("BEGIN IMMEDIATE")
@@ -314,11 +284,7 @@ class Ledger:
         return memoire.lire_decisions(self._connexion)
 
     def memoire(self) -> Memoire:
-        return Memoire(
-            decisions=self.decisions(),
-            regles=self.regles(),
-            exceptionnels=memoire.lire_exceptionnels(self._connexion),
-        )
+        return Memoire(decisions=self.decisions(), regles=self.regles())
 
     def desactiver_regle(self, numero: int) -> Regle:
         """Désactive une règle ; `RegleError` si elle est inconnue ou déjà inactive."""
@@ -349,33 +315,15 @@ class Ledger:
         )
 
     def corriger_proposition(
-        self, mois: str, source: Source, cle: str, sous_categorie: SousCategorie
+        self, mois: str, source: Source, cle: str, imputation: Imputation
     ) -> None:
         self._en_transaction(
-            lambda: memoire.corriger_proposition(self._connexion, mois, source, cle, sous_categorie)
+            lambda: memoire.corriger_proposition(self._connexion, mois, source, cle, imputation)
         )
 
     def valider_proposition(self, regle: Regle) -> Regle:
         """Règle marchand et proposition validée, dans une seule transaction SQL."""
         return self._en_transaction(lambda: memoire.valider_proposition(self._connexion, regle))
-
-    def exceptionnels(self) -> dict[str, bool]:
-        return memoire.lire_exceptionnels(self._connexion)
-
-    def enregistrer_exceptionnel(self, transaction_id: str, exceptionnel: bool) -> None:
-        self._en_transaction(
-            lambda: memoire.enregistrer_exceptionnel(self._connexion, transaction_id, exceptionnel)
-        )
-
-    def lire_sql(self, requete: str, parametres: Sequence[object] = ()) -> list[tuple[object, ...]]:
-        """Lecture brute, réservée à la restitution (journal) : jamais d'écriture."""
-        if not requete.lstrip().upper().startswith("SELECT"):
-            raise LedgerError("lire_sql n'accepte que des requêtes SELECT")
-        return [tuple(ligne) for ligne in self._connexion.execute(requete, parametres)]
-
-    def ajouter_regle(self, regle: Regle) -> Regle:
-        """Ajoute une règle hors dialogue ; `RegleError` en cas de conflit ou de doublon."""
-        return self._en_transaction(lambda: memoire.inserer_regle(self._connexion, regle))
 
     def marquer_question_posee(self, question: Question) -> int:
         return self._en_transaction(
@@ -383,17 +331,12 @@ class Ledger:
         )
 
     def enregistrer_reponse(
-        self, question: Question, decisions: Sequence[Decision], regle: Regle | None
+        self, question: Question, decision: Decision, regle: Regle | None
     ) -> Regle | None:
         """Écrit une réponse immédiatement et atomiquement ; renvoie la règle créée, numérotée."""
         return self._en_transaction(
-            lambda: memoire.enregistrer_reponse(self._connexion, question, decisions, regle)
+            lambda: memoire.enregistrer_reponse(self._connexion, question, decision, regle)
         )
-
-    def liens_existants(self) -> set[str]:
-        """Dépenses déjà liées à un virement (RG-07)."""
-        requete = "SELECT DISTINCT lien_id FROM decisions WHERE lien_id IS NOT NULL"
-        return {str(ligne[0]) for ligne in self._connexion.execute(requete)}
 
     # Lecture ----------------------------------------------------------------------------------
 
@@ -477,28 +420,23 @@ def _depuis_ligne(ligne: Sequence[object]) -> Transaction:
 def _classement_vers_ligne(c: Classement) -> tuple[object, ...]:
     return (
         c.transaction_id,
-        c.nature.value if c.nature is not None else None,
         c.sous_categorie.value if c.sous_categorie is not None else None,
-        c.mois_rattachement,
+        int(c.non_comptee),
         c.origine.value,
         c.detail,
-        c.contrepartie_id,
-        c.lien_id,
-        int(c.exceptionnel),
         c.regle_id,
     )
 
 
 def _classement_depuis_ligne(ligne: Sequence[object]) -> Classement:
     valeurs = dict(zip(_COLONNES_CLASSEMENT, ligne, strict=True))
-    nature, sous_categorie = valeurs["nature"], valeurs["sous_categorie"]
+    sous_categorie = valeurs["sous_categorie"]
     return Classement.model_validate(
         {
             **valeurs,
-            "nature": Nature(str(nature)) if nature is not None else None,
             "sous_categorie": SousCategorie(str(sous_categorie)) if sous_categorie else None,
+            "non_comptee": bool(valeurs["non_comptee"]),
             "origine": OrigineClassement(str(valeurs["origine"])),
-            "exceptionnel": bool(valeurs["exceptionnel"]),
             "regle_id": int(str(valeurs["regle_id"])) if valeurs["regle_id"] is not None else None,
         }
     )

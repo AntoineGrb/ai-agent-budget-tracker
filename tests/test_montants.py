@@ -7,7 +7,6 @@ from budget.montants import (
     depuis_centimes,
     en_centimes,
     formater_montant,
-    formater_pourcentage,
     parse_montant,
     parse_montant_optionnel,
 )
@@ -90,16 +89,3 @@ def test_en_centimes_et_retour(montant: Decimal, centimes: int) -> None:
 def test_en_centimes_refuse_plus_de_deux_decimales(montant: str) -> None:
     with pytest.raises(ValueError):
         en_centimes(Decimal(montant))
-
-
-@pytest.mark.parametrize(
-    ("valeur", "signe", "attendu"),
-    [
-        (Decimal("-17.70"), True, "-17,70 %"),
-        (Decimal("10.09"), True, "+10,09 %"),
-        (Decimal("10"), False, "10 %"),
-        (Decimal("12.5"), False, "12,5 %"),
-    ],
-)
-def test_formater_pourcentage(valeur: Decimal, signe: bool, attendu: str) -> None:
-    assert formater_pourcentage(valeur, signe=signe) == attendu

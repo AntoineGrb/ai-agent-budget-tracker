@@ -1,8 +1,9 @@
-"""Bloc 2 : validation en lot des sous-catégories des paiements carte (spec 07, cadrage §7).
+"""Validation en lot des paiements carte (cadrage §7).
 
 Une ligne par groupe marchand en attente, avec la proposition du catégoriseur, puis une ligne par
-paiement Amazon à compléter (RG-13). Entrée valide tout ; un numéro corrige une ligne ; `q` quitte.
-Chaque groupe validé devient une règle `marchand_carte` ; chaque ligne RG-13, une décision.
+paiement Amazon à compléter (RG-13). Entrée valide tout ; un numéro corrige une ligne, vers une
+autre sous-catégorie ou « non compté » ; `q` quitte. Chaque groupe validé devient une règle
+`marchand_carte` ; chaque ligne Amazon, une décision.
 """
 
 from collections.abc import Sequence
@@ -13,16 +14,17 @@ from rich.table import Table
 from rich.text import Text
 
 from budget.agents.categoriseur import Categoriseur
-from budget.categories import SousCategorie, libelle_complet
-from budget.classement.cartes import DETAIL_RG13, GroupeMarchand
+from budget.categories import Imputation, SousCategorie
+from budget.classement.cartes import GroupeMarchand
 from budget.errors import CategorisationError, RegleError
 from budget.ledger import Ledger
 from budget.libelles import cle_marchand
-from budget.models import Compte, Nature, Transaction
+from budget.models import Compte, Transaction
 from budget.montants import formater_montant
-from budget.questions.dialogue import QUITTER, Abandon, Interlocuteur, choisir_sous_categorie
+from budget.questions.dialogue import ANNULER, QUITTER, Abandon, Interlocuteur, choisir_imputation
 from budget.questions.modeles import Question, TypeQuestion
-from budget.regles import Critere, Decision, Regle, TypeRegle
+from budget.questions.reponses import decision_pour
+from budget.regles import Critere, Regle, TypeRegle
 
 VALIDER = ""
 MOTIF_RG13 = "RG-13"
@@ -33,13 +35,15 @@ class LigneLot:
     groupe: GroupeMarchand | None = None
     operation: Transaction | None = None  # RG-13 : paiement Amazon à compléter
     proposee: SousCategorie | None = None
-    corrigee: SousCategorie | None = None
+    corrigee: Imputation | None = None
     validee: bool = False
     refus: str | None = None
 
     @property
-    def retenue(self) -> SousCategorie | None:
-        return self.corrigee or self.proposee
+    def retenue(self) -> Imputation | None:
+        if self.corrigee is not None:
+            return self.corrigee
+        return Imputation(sous_categorie=self.proposee) if self.proposee is not None else None
 
     @property
     def transactions(self) -> tuple[Transaction, ...]:
@@ -61,10 +65,11 @@ class LigneLot:
         return f"{cle} · {self.operation.date_operation:%d/%m/%Y}"
 
     def proposition(self) -> str:
-        if self.retenue is None:
+        retenue = self.retenue
+        if retenue is None:
             return "à compléter (RG-13)" if self.operation is not None else "—"
         suffixe = " (corrigée)" if self.corrigee is not None else ""
-        return f"{libelle_complet(self.retenue)}{suffixe}"
+        return f"{retenue.libelle_imputation()}{suffixe}"
 
 
 @dataclass
@@ -97,7 +102,7 @@ def tableau(mois: str, lignes: Sequence[LigneLot]) -> Table:
 
 
 class ValidationLot:
-    """Déroule le bloc 2 pour un mois."""
+    """Déroule la validation en lot pour un mois."""
 
     def __init__(
         self,
@@ -180,19 +185,19 @@ class ValidationLot:
             self._corriger(lignes[int(choix) - 1])
 
     def _corriger(self, ligne: LigneLot) -> None:
-        sous_categorie = choisir_sous_categorie(self.interlocuteur)
-        if sous_categorie is None:
+        imputation = choisir_imputation(self.interlocuteur, ((ANNULER, "Annuler"),))
+        if imputation is None:
             return
-        ligne.corrigee = sous_categorie
+        ligne.corrigee = imputation
         if ligne.groupe is not None:  # enregistrée aussitôt : survit à un `q`
             self.ledger.corriger_proposition(
-                self.mois, ligne.groupe.source, ligne.groupe.cle, sous_categorie
+                self.mois, ligne.groupe.source, ligne.groupe.cle, imputation
             )
 
     def _valider(self, lignes: Sequence[LigneLot]) -> None:
         for ligne in lignes:
-            sous_categorie = ligne.retenue
-            if sous_categorie is None:
+            retenue = ligne.retenue
+            if retenue is None:
                 continue
             if ligne.groupe is not None:
                 regle = Regle(
@@ -200,7 +205,8 @@ class ValidationLot:
                     source=ligne.groupe.source,
                     critere=Critere.LIBELLE_EXACT,
                     valeur=ligne.groupe.cle,
-                    sous_categorie=sous_categorie,
+                    sous_categorie=retenue.sous_categorie,
+                    non_comptee=retenue.non_comptee,
                 )
                 try:
                     self.ledger.valider_proposition(regle)
@@ -208,7 +214,7 @@ class ValidationLot:
                     ligne.refus = str(erreur)
                     continue
             else:
-                self._valider_rg13(ligne, sous_categorie)
+                self._valider_rg13(ligne, retenue)
             ligne.validee = True
         refusees = [(i, ligne) for i, ligne in enumerate(lignes, 1) if ligne.refus]
         for numero, ligne in refusees:
@@ -222,21 +228,23 @@ class ValidationLot:
                 f"{restantes} en attente."
             )
         )
+        sans_proposition = sum(1 for ligne in lignes if ligne.retenue is None)
+        if sans_proposition:
+            self.interlocuteur.afficher(
+                Text(
+                    f"  {sans_proposition} ligne(s) sans proposition, donc non validée(s) par "
+                    "Entrée : les compléter par leur numéro, ou relancer `budget classify` "
+                    "quand le catégoriseur répond."
+                )
+            )
 
-    def _valider_rg13(self, ligne: LigneLot, sous_categorie: SousCategorie) -> None:
-        """RG-13 : une décision, jamais une règle ; la nature suit le sens de l'opération."""
+    def _valider_rg13(self, ligne: LigneLot, imputation: Imputation) -> None:
+        """RG-13 : une décision, jamais une règle."""
         assert ligne.operation is not None
-        operation = ligne.operation
         question = Question(
             type=TypeQuestion.OPERATION,
             motif=MOTIF_RG13,
-            transaction=operation,
+            transaction=ligne.operation,
             regle_proposable=False,
         )
-        decision = Decision(
-            transaction_id=operation.id,
-            nature=Nature.DEPENSE if operation.montant < 0 else Nature.REMBOURSEMENT,
-            sous_categorie=sous_categorie,
-            detail=DETAIL_RG13,
-        )
-        self.ledger.enregistrer_reponse(question, [decision], None)
+        self.ledger.enregistrer_reponse(question, decision_pour(question, imputation), None)

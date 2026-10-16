@@ -3,6 +3,7 @@
 import re
 
 import pytest
+from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -24,7 +25,7 @@ from budget.classement.cartes import GroupeMarchand
 from budget.errors import CategorisationError
 from budget.models import Source
 from tests.conftest import fabriquer_transaction
-from tests.scenarios.juin import AppelsCategoriseur, modele_propositions
+from tests.scenarios.reference import AppelsCategoriseur, modele_propositions
 
 
 def _groupe(cle: str, source: Source = Source.CA_CB, montant: str = "-12.34") -> GroupeMarchand:
@@ -67,10 +68,10 @@ def test_cles_identiques_une_fois_masquees_envoyees_une_fois() -> None:
     appels = AppelsCategoriseur()
     groupes = [_groupe("MAGASIN 1234567"), _groupe("MAGASIN 7654321")]
     resultat = CategoriseurLLM(
-        modele_propositions(appels, {"MAGASIN #######": "achats.divers"})
+        modele_propositions(appels, {"MAGASIN #######": "achats.autre"})
     ).proposer(groupes)
     assert appels.prompts == ["MAGASIN #######"]
-    assert set(resultat.values()) == {SousCategorie.ACHATS_DIVERS} and len(resultat) == 2
+    assert set(resultat.values()) == {SousCategorie.ACHATS_AUTRE} and len(resultat) == 2
 
 
 @pytest.mark.parametrize(
@@ -81,7 +82,7 @@ def test_cles_identiques_une_fois_masquees_envoyees_une_fois() -> None:
             [
                 ("MONOPRIX", "courses.supermarche"),
                 ("UBER *EATS", "restos.livraison"),
-                ("X", "achats.divers"),
+                ("X", "achats.autre"),
             ],
             "libellés inconnus : X",
         ),
@@ -133,7 +134,7 @@ def test_lots_de_cent_et_resultats_partiels() -> None:
     """Au-delà de 100 clés, un appel par lot ; un lot en échec garde les lots déjà reçus."""
     groupes = [_groupe(f"MARCHAND {chr(65 + i // 26)}{chr(65 + i % 26)}") for i in range(150)]
     appels = AppelsCategoriseur()
-    table = {g.cle: "achats.divers" for g in groupes}
+    table = {g.cle: "achats.autre" for g in groupes}
     resultat = CategoriseurLLM(modele_propositions(appels, table)).proposer(groupes)
     assert [len(p.splitlines()) for p in appels.prompts] == [TAILLE_LOT_CATEGORISEUR, 50]
     assert len(resultat) == 150
@@ -150,12 +151,24 @@ def test_lots_de_cent_et_resultats_partiels() -> None:
         )
         lots.append(1)
         if prompt.startswith("MARCHAND AA"):
-            return _reponse(info, [(c, "achats.divers") for c in prompt.splitlines()])
+            return _reponse(info, [(c, "achats.autre") for c in prompt.splitlines()])
         raise RuntimeError("réseau indisponible")
 
     with pytest.raises(CategorisationError, match="RuntimeError") as erreur:
         CategoriseurLLM(FunctionModel(second_lot_en_echec)).proposer(groupes)
     assert len(erreur.value.partielles) == TAILLE_LOT_CATEGORISEUR
+
+
+def test_erreur_http_expliquee_sans_contenu_soumis() -> None:
+    """Statut et message du fournisseur dans la raison affichée, jamais les libellés."""
+
+    def modele(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        corps = {"type": "error", "error": {"type": "not_found_error", "message": "model: x"}}
+        raise ModelHTTPError(404, "x", corps)
+
+    with pytest.raises(CategorisationError) as erreur:
+        CategoriseurLLM(FunctionModel(modele)).proposer([_groupe("MONOPRIX")])
+    assert erreur.value.raison == "catégoriseur en échec (ModelHTTPError : HTTP 404, model: x)"
 
 
 def test_categoriseur_indisponible() -> None:

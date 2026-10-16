@@ -1,4 +1,4 @@
-"""Dialogue dans le terminal : une question à la fois, réponse enregistrée aussitôt (spec 06).
+"""Dialogue dans le terminal : une question à la fois, réponse enregistrée aussitôt (cadrage §7).
 
 Le terminal est local : le libellé y est affiché, mais jamais journalisé.
 """
@@ -13,28 +13,25 @@ from typing import Protocol
 from rich.console import Console, RenderableType
 from rich.text import Text
 
-from budget.categories import Categorie, SousCategorie, categorie_de, libelle_de
-from budget.classement.modeles import Classement, OrigineClassement
-from budget.config import Contexte
+from budget.categories import NON_COMPTE, Categorie, Imputation, libelle_de, sous_categories_de
 from budget.errors import RegleError
 from budget.ledger import Ledger
-from budget.models import Nature, Source, Transaction
+from budget.models import Source, Transaction
 from budget.montants import formater_montant
-from budget.questions.candidats import EtatLiens, candidats_lien, page
-from budget.questions.modeles import Question, Reponse, TypeQuestion
+from budget.questions.modeles import Question, TypeQuestion
 from budget.questions.reponses import (
     construire_regle,
     critere_propose,
-    decisions_pour,
+    decision_pour,
     lire_plage,
     lire_prefixe,
     regle_toujours_demander,
 )
-from budget.regles import Critere, Regle, TypeRegle, verifier_nouvelle_regle
+from budget.regles import Critere, Regle, TypeRegle, regle_retenue, verifier_nouvelle_regle
 
 journal = logging.getLogger(__name__)
 
-PASSER, QUITTER, ANNULER, PAGE_SUIVANTE = "s", "q", "a", "p"
+PASSER, QUITTER, ANNULER = "s", "q", "a"
 
 
 class Interlocuteur(Protocol):
@@ -76,7 +73,7 @@ class ScenarioError(Exception):
 
 
 class InterlocuteurScripte:
-    """Rejoue une liste de réponses (tests, et plus tard réponses saisies ailleurs)."""
+    """Rejoue une liste de réponses (tests)."""
 
     def __init__(self, reponses: Iterable[str]) -> None:
         self._reponses = list(reponses)
@@ -122,45 +119,12 @@ class Bilan:
     posees: int = 0
     repondues: int = 0
     passees: int = 0
+    couvertes: int = 0  # sautées : couvertes par une règle créée plus tôt dans le dialogue
     regles_creees: int = 0
     interrompu: bool = False
 
 
-# Choix proposés --------------------------------------------------------------------------------
-
-_CHOIX_VIREMENT_SORTIE: tuple[tuple[str, Nature], ...] = (
-    ("Dotation", Nature.DOTATION),
-    ("Épargne", Nature.EPARGNE),
-    ("Complément", Nature.COMPLEMENT),
-    ("Lien à une dépense", Nature.LIEN_DEPENSE),
-    ("Dépense", Nature.DEPENSE),
-    ("Hors budget", Nature.HORS_BUDGET),
-)
-_CHOIX_VIREMENT_ENTREE: tuple[tuple[str, Nature], ...] = (
-    ("Dotation", Nature.DOTATION),
-    ("Désépargne", Nature.EPARGNE),
-    ("Complément", Nature.COMPLEMENT),
-    ("Lien à une dépense", Nature.LIEN_DEPENSE),
-    ("Remboursement", Nature.REMBOURSEMENT),  # RG-09
-    ("Revenu", Nature.REVENU),
-    ("Hors budget", Nature.HORS_BUDGET),  # RG-10
-)
-_CHOIX_OPERATION_SORTIE: tuple[tuple[str, Nature], ...] = (
-    ("Dépense", Nature.DEPENSE),
-    ("Hors budget", Nature.HORS_BUDGET),
-)
-_CHOIX_OPERATION_ENTREE: tuple[tuple[str, Nature], ...] = (
-    ("Remboursement", Nature.REMBOURSEMENT),
-    ("Revenu", Nature.REVENU),
-    ("Hors budget", Nature.HORS_BUDGET),
-)
-
-
-def choix_de_nature(question: Question) -> tuple[tuple[str, Nature], ...]:
-    sortie = question.transaction.montant < 0
-    if question.type is TypeQuestion.VIREMENT:
-        return _CHOIX_VIREMENT_SORTIE if sortie else _CHOIX_VIREMENT_ENTREE
-    return _CHOIX_OPERATION_SORTIE if sortie else _CHOIX_OPERATION_ENTREE
+# Menus -----------------------------------------------------------------------------------------
 
 
 def menu(options: Sequence[str], suffixes: Sequence[tuple[str, str]], par_ligne: int = 3) -> Text:
@@ -179,13 +143,6 @@ def nom_compte(transaction: Transaction) -> str:
     return "Perso" if transaction.source is Source.TR else "Joint"
 
 
-def _ligne(transaction: Transaction, suffixe: str = "") -> str:
-    return (
-        f"  {nom_compte(transaction)} · {transaction.date_operation:%d/%m/%Y} · "
-        f"{montant_signe(transaction.montant)} · {transaction.type_operation or ''}{suffixe}"
-    )
-
-
 def choisir(
     interlocuteur: Interlocuteur, options: Sequence[str], suffixes: Sequence[tuple[str, str]]
 ) -> str:
@@ -198,16 +155,23 @@ def choisir(
     return choix
 
 
-def choisir_sous_categorie(interlocuteur: Interlocuteur) -> SousCategorie | None:
-    """Catégorie puis sous-catégorie, construits depuis `categories.py` ; `None` = annulé."""
+def choisir_imputation(
+    interlocuteur: Interlocuteur, suffixes: Sequence[tuple[str, str]]
+) -> Imputation | None:
+    """Catégorie puis sous-catégorie, ou « Non compté » ; `None` pour un suffixe (passer, annuler).
+
+    Menus construits depuis `categories.py`.
+    """
     categories = list(Categorie)
     while True:
         interlocuteur.afficher(Text("  Catégorie ?"))
-        choix = choisir(interlocuteur, [c.libelle for c in categories], ((ANNULER, "Annuler"),))
-        if choix == ANNULER:
+        choix = choisir(interlocuteur, [*(c.libelle for c in categories), NON_COMPTE], suffixes)
+        if not choix.isdigit():
             return None
+        if int(choix) == len(categories) + 1:
+            return Imputation(non_comptee=True)  # RG-10
         categorie = categories[int(choix) - 1]
-        sous_categories = [sc for sc in SousCategorie if categorie_de(sc) is categorie]
+        sous_categories = sous_categories_de(categorie)
         interlocuteur.afficher(Text(f"  Sous-catégorie de {categorie.libelle} ?"))
         choix = choisir(
             interlocuteur,
@@ -215,43 +179,42 @@ def choisir_sous_categorie(interlocuteur: Interlocuteur) -> SousCategorie | None
             ((ANNULER, "Retour aux catégories"),),
         )
         if choix != ANNULER:
-            return sous_categories[int(choix) - 1]
+            return Imputation(sous_categorie=sous_categories[int(choix) - 1])
 
 
-_TITRES = {
-    TypeQuestion.VIREMENT: "Virement",
-    TypeQuestion.SALAIRE: "Salaire",
-    TypeQuestion.OPERATION: "Opération",
-}
+_TITRES = {TypeQuestion.VIREMENT: "Virement", TypeQuestion.OPERATION: "Opération"}
 
 
 class Dialogue:
     """Pose les questions une par une et enregistre chaque réponse immédiatement."""
 
-    def __init__(
-        self, interlocuteur: Interlocuteur, ledger: Ledger, contexte: Contexte, liens: EtatLiens
-    ) -> None:
+    def __init__(self, interlocuteur: Interlocuteur, ledger: Ledger) -> None:
         self.interlocuteur = interlocuteur
         self.ledger = ledger
-        self.contexte = contexte
-        self.liens = liens
 
     def derouler(self, questions: Sequence[Question]) -> Bilan:
         bilan = Bilan(a_poser=len(questions))
         try:
             for numero, question in enumerate(questions, 1):
+                if (
+                    question.regle_proposable
+                    and regle_retenue(self.ledger.regles(), question.transaction) is not None
+                ):
+                    bilan.couvertes += 1
+                    continue
                 bilan.posees += 1
                 self.ledger.marquer_question_posee(question)
                 self._afficher_question(question, numero, len(questions))
-                reponse = self._repondre(question)
+                reponse = choisir_imputation(
+                    self.interlocuteur, ((PASSER, "Passer"), (QUITTER, "Quitter"))
+                )
                 if reponse is None:
                     bilan.passees += 1
                     continue
                 regle = self._proposer_regle(question, reponse)
                 creee = self.ledger.enregistrer_reponse(
-                    question, decisions_pour(question, reponse), regle
+                    question, decision_pour(question, reponse), regle
                 )
-                self._noter(question, reponse)
                 bilan.repondues += 1
                 if creee is not None:
                     bilan.regles_creees += 1
@@ -259,123 +222,33 @@ class Dialogue:
         except (Abandon, KeyboardInterrupt, EOFError):
             bilan.interrompu = True
         journal.info(
-            "questions : %d à poser, %d posées, %d répondues, %d passées, %d règles créées",
+            "questions : %d à poser, %d posées, %d répondues, %d passées, %d couvertes, "
+            "%d règles créées",
             bilan.a_poser,
             bilan.posees,
             bilan.repondues,
             bilan.passees,
+            bilan.couvertes,
             bilan.regles_creees,
         )
         return bilan
 
-    # Affichage ---------------------------------------------------------------------------------
-
     def _afficher_question(self, question: Question, numero: int, total: int) -> None:
         t = question.transaction
-        motif = "non classée" if question.motif == "non_classe" else question.motif
-        lignes = ["", f"Question {numero}/{total} — {_TITRES[question.type]} ({motif})"]
-        if question.type is TypeQuestion.SALAIRE:
-            fenetre = self.contexte.fenetre_salaire
-            lignes += [
-                f"  {nom_compte(t)} · {t.date_operation:%d/%m/%Y} · {montant_signe(t.montant)} · "
-                f"{question.nom_salaire}",
-                f"  Reçu hors de la fenêtre du {fenetre.du_jour} au "
-                f"{fenetre.au_jour_mois_suivant}, sans période dans le libellé.",
-            ]
-        else:
-            lignes.append(_ligne(t))
-            if question.contrepartie is not None:
-                lignes.append(_ligne(question.contrepartie, " (contrepartie)"))
-            lignes.append(f"  {t.libelle}")
+        lignes = [
+            "",
+            f"Question {numero}/{total} — {_TITRES[question.type]} ({question.motif})",
+            f"  {nom_compte(t)} · {t.date_operation:%d/%m/%Y} · {montant_signe(t.montant)} · "
+            f"{t.type_operation or ''}",
+            f"  {t.libelle}",
+        ]
         self.interlocuteur.afficher(Text("\n".join(lignes)))
-
-    def _choisir(self, options: Sequence[str], suffixes: Sequence[tuple[str, str]]) -> str:
-        return choisir(self.interlocuteur, options, suffixes)
-
-    # Réponse -----------------------------------------------------------------------------------
-
-    def _repondre(self, question: Question) -> Reponse | None:
-        """Réponse à la question, ou `None` pour la passer."""
-        sortie_ou_passer = ((PASSER, "Passer"), (QUITTER, "Quitter"))
-        if question.type is TypeQuestion.SALAIRE:
-            self.interlocuteur.afficher(Text("  Mois de paie ?"))
-            choix = self._choisir(question.mois_possibles, sortie_ou_passer)
-            if choix == PASSER:
-                return None
-            mois = question.mois_possibles[int(choix) - 1]
-            return Reponse(nature=Nature.REVENU, mois_paie=mois)
-
-        options = choix_de_nature(question)
-        while True:
-            choix = self._choisir([libelle for libelle, _ in options], sortie_ou_passer)
-            if choix == PASSER:
-                return None
-            nature = options[int(choix) - 1][1]
-            reponse = self._completer(question, nature)
-            if reponse is not None:
-                return reponse
-
-    def _completer(self, question: Question, nature: Nature) -> Reponse | None:
-        """Précise la réponse (dotation, dépense liée, sous-catégorie) ; `None` = annulé."""
-        if nature is Nature.DOTATION:
-            dotations = self.contexte.dotations
-            choix = self._choisir([d.nom for d in dotations], ((ANNULER, "Annuler"),))
-            if choix == ANNULER:
-                return None
-            return Reponse(nature=nature, detail=f"dotations.{dotations[int(choix) - 1].nom}")
-        if nature is Nature.LIEN_DEPENSE:
-            lien = self._choisir_depense(question)
-            return Reponse(nature=nature, lien_id=lien) if lien is not None else None
-        if nature in (Nature.DEPENSE, Nature.REMBOURSEMENT):
-            sous_categorie = self._choisir_sous_categorie()
-            if sous_categorie is None:
-                return None
-            return Reponse(nature=nature, sous_categorie=sous_categorie)
-        return Reponse(nature=nature)
-
-    def _choisir_sous_categorie(self) -> SousCategorie | None:
-        return choisir_sous_categorie(self.interlocuteur)
-
-    def _choisir_depense(self, question: Question) -> str | None:
-        """RG-07 : dépense liée parmi les candidates, 10 par page ; `None` = annulé."""
-        candidats = candidats_lien(question, self.liens)
-        if not candidats:
-            self.interlocuteur.afficher(Text("  Aucune dépense candidate (RG-07)."))
-            return None
-        numero_page = 0
-        while True:
-            affichees = page(candidats, numero_page)
-            options = [
-                f"{nom_compte(t)} · {t.date_operation:%d/%m/%Y} · "
-                f"{montant_signe(t.montant)} · {t.libelle}"
-                for t in affichees
-            ]
-            self.interlocuteur.afficher(Text("  Dépense liée ?"))
-            self.interlocuteur.afficher(
-                Text("\n".join(f"  {i}. {o}" for i, o in enumerate(options, 1)))
-            )
-            suffixes = [(ANNULER, "Annuler")]
-            if page(candidats, numero_page + 1):
-                suffixes.insert(0, (PAGE_SUIVANTE, "Page suivante"))
-            self.interlocuteur.afficher(menu([], suffixes))
-            valides = [str(i) for i in range(1, len(affichees) + 1)] + [c for c, _ in suffixes]
-            choix = self.interlocuteur.demander(">", valides)
-            if choix == ANNULER:
-                return None
-            if choix == PAGE_SUIVANTE:
-                numero_page += 1
-                continue
-            return affichees[int(choix) - 1].id
 
     # Règle -------------------------------------------------------------------------------------
 
-    def _proposer_regle(self, question: Question, reponse: Reponse) -> Regle | None:
-        """Proposition de règle (cadrage §7), sauf salaire, lien à une dépense et RG-14."""
-        if (
-            not question.regle_proposable
-            or question.type is TypeQuestion.SALAIRE
-            or reponse.nature is Nature.LIEN_DEPENSE
-        ):
+    def _proposer_regle(self, question: Question, reponse: Imputation) -> Regle | None:
+        """Proposition de règle (cadrage §7), sauf RG-14."""
+        if not question.regle_proposable:
             return None
         while True:
             choix = self.interlocuteur.demander(
@@ -397,7 +270,7 @@ class Dialogue:
                 continue
             return regle
 
-    def _construire_regle(self, question: Question, reponse: Reponse) -> Regle:
+    def _construire_regle(self, question: Question, reponse: Imputation) -> Regle:
         transaction = question.transaction
         type_regle, critere, valeur = critere_propose(question)
         if critere is Critere.LIBELLE_EXACT and type_regle is TypeRegle.PRELEVEMENT:
@@ -445,20 +318,3 @@ class Dialogue:
                 return lire(self.interlocuteur.saisir(invite))
             except ValueError as erreur:
                 self.interlocuteur.afficher(Text(f"  Saisie refusée : {erreur}"))
-
-    # Suivi -------------------------------------------------------------------------------------
-
-    def _noter(self, question: Question, reponse: Reponse) -> None:
-        """Met à jour les candidates RG-07 avec la réponse donnée."""
-        if reponse.lien_id is not None:
-            self.liens.deja_lies.add(reponse.lien_id)
-        for t in question.transactions:
-            self.liens.classements[t.id] = Classement(
-                transaction_id=t.id,
-                nature=reponse.nature,
-                sous_categorie=reponse.sous_categorie,
-                mois_rattachement=t.mois_budgetaire,
-                origine=OrigineClassement.DECISION,
-                detail=reponse.detail,
-                lien_id=reponse.lien_id,
-            )

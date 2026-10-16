@@ -1,44 +1,48 @@
 # Cadrage — Budget Tracker agentique (Projet 2)
 
-Sep 23, 2026 · @Antoine
+Sep 23, 2026 · @Antoine · Révisé le 15 oct. 2026
+
+> **Recadrage du 15 octobre 2026.** Après le premier test sur données réelles, le périmètre est réduit au suivi des dépenses. Les revenus, les virements entre comptes, les dotations, la provision, les contrôles d'équilibre des flux et les natures de flux sont abandonnés. Seuls les débits sont suivis : chacun reçoit une sous-catégorie ou est déclaré « non compté ». Les avoirs carte restent déduits de leur catégorie. Les étapes 9 et 10 sont en attente, et la spec 08 sera réécrite.
 
 ## 1. Contexte et objectifs
 
-Chaque mois, l'agent transforme trois extractions bancaires en un suivi des dépenses du foyer publié dans un Google Sheet, avec une vue compte joint et une vue compte perso.
+Chaque mois, l'agent transforme trois extractions bancaires en un suivi des dépenses du foyer, avec une vue compte joint et une vue compte perso.
 
-**Objectif d'apprentissage** : pratiquer avec PydanticAI la sortie structurée, le human-in-the-loop persistant (mémoire des décisions).
+**Objectif d'apprentissage** : pratiquer avec PydanticAI la sortie structurée et le human-in-the-loop persistant (mémoire des décisions).
 
 **Objectif fonctionnel** : répondre chaque mois à trois questions.
 
-1. Combien dépense-t-on par rapport à l'enveloppe prévue, en joint et en perso ?
-2. Quelle catégorie pèse le plus, et sur laquelle peut-on agir ?
-3. À quels moments de l'année le budget explose-t-il, et pourquoi ?
+1. Combien dépense-t-on ce mois-ci, en joint et en perso ?
+2. Quelle catégorie pèse le plus ?
+3. Comment les dépenses évoluent-elles d'un mois à l'autre ?
 
-**Posture assumée** : environ 80 % du projet est de l'ETL déterministe (parsing, contrôles, agrégats). Le LLM n'intervient qu'à deux endroits : catégoriser les marchands inconnus et commenter des chiffres déjà calculés par le code.
+**Posture assumée** : l'essentiel du projet est de l'ETL déterministe (parsing, contrôles, totaux). Le LLM catégorise les marchands carte inconnus. Un agent de synthèse pourra commenter les chiffres calculés par le code (étape 8, en attente).
 
 ## 2. Périmètre
 
-Le MVP couvre toute la chaîne, de l'import jusqu'au Google Sheet. Il est lancé à la main et pose ses questions dans le terminal.
+L'outil est lancé à la main et pose ses questions dans le terminal.
 
 **MVP**
 
 - Import des trois extractions d'un mois depuis un dossier local.
 - Parsing déterministe avec contrôles bloquants, puis stockage dans un ledger SQLite dédoublonné.
-- Classement de chaque opération : nature de flux, puis catégorie (règles, puis LLM, puis validation humaine).
-- Question obligatoire sur tout virement entre comptes non couvert par une règle.
-- Mémoire des décisions : règles apprises en base et journal lisible en Markdown.
-- Agrégats calculés par le code, puis synthèse rédigée par le LLM.
-- Publication dans Google Sheets : onglet Synthèse et un onglet par mois.
+- Suivi des débits seulement. Les crédits sont ignorés, sauf les avoirs carte, déduits de leur catégorie.
+- Catégorisation des paiements carte : règles, puis proposition du LLM, puis validation en lot.
+- Question sur tout autre débit non couvert par une règle : sous-catégorie ou « non compté ».
+- Mémoire des décisions : chaque réponse peut devenir une règle réutilisable.
+- Dépenses du mois par catégorie dans le terminal, et export CSV.
+
+**En attente (étapes 8 à 10)** : synthèse rédigée par le LLM, publication Google Sheets, import de l'historique.
 
 **Phase 2**
 
-- Publication dans le Sheet et dépôt sur Google Drive.
-- Déclenchement automatique par surveillance du dossier Drive.
-- Agent analyste doté d'outils de lecture du ledger, pour creuser le « pourquoi » d'un dépassement.
+- Dépôt des extractions sur Google Drive et déclenchement automatique par surveillance du dossier.
+- Agent analyste doté d'outils de lecture du ledger, pour creuser le « pourquoi » d'une hausse.
 
 **Hors périmètre**
 
-- Import du compte perso de Sarah, du compte épargne, des livrets et des enveloppes PEA/CTO. Seuls les flux vers ou depuis ces comptes sont visibles.
+- Revenus, épargne, virements entre comptes et équilibre des flux du foyer.
+- Import du compte perso de Sarah, du compte épargne, des livrets et des enveloppes PEA/CTO.
 - Vue consolidée du foyer (joint et perso additionnés).
 - Suivi de patrimoine et de performance des investissements.
 
@@ -46,10 +50,12 @@ Le MVP couvre toute la chaîne, de l'import jusqu'au Google Sheet. Il est lancé
 
 Les trois sources sont parsables de façon déterministe, et chacune dispose d'un contrôle de cohérence. Les deux contrôles chiffrés ont été vérifiés sur les fichiers de juin 2026.
 
+Tout est lu et contrôlé, crédits compris, car le contrôle de solde Trade Republic en a besoin. Les crédits ne sont écartés qu'ensuite (RG-19).
+
 | Source | Format | Période couverte | Volume (juin) | Contrôle bloquant |
 | --- | --- | --- | --- | --- |
 | CA cartes (X1091, X1481) | CSV cp1252, séparateur `;`, une section par carte | Achats du 19 M-1 au 18 M environ, débités fin M | 48 opérations | Net de chaque carte égal à la ligne « Prélèvement carte » du joint, au centime (3 116,50 € et 410,67 € : OK) |
-| CA compte joint | CSV cp1252, `;`, libellés multi-lignes | Du 1er à la fin du mois M | 38 opérations | Chaque ligne a une date et un seul montant ; une ligne de débit différé par carte active |
+| CA compte joint | CSV cp1252, `;`, libellés multi-lignes | Du 1er à la fin du mois M | 38 opérations | Chaque ligne a une date et un seul montant ; une ligne de débit différé par carte |
 | Trade Republic compte courant | PDF de 8 pages contenant 3 relevés (compte courant et 2 PEA) | Du 1er à la fin du mois M | 74 opérations | Solde recalculé ligne à ligne, et totaux égaux à la synthèse du relevé (entrées 993,71 €, sorties 1 435,36 €) |
 
 **Pièges du Crédit Agricole**
@@ -57,7 +63,7 @@ Les trois sources sont parsables de façon déterministe, et chacune dispose d'u
 - Encodage cp1252, fins de ligne CRLF et LF mélangées, blocs d'en-tête à ignorer, une section par carte.
 - Libellé du joint sur plusieurs lignes : la ligne 1 donne le type d'opération, la ligne 2 le détail, les suivantes les références SEPA (RUM, identifiant créancier ICS).
 - Montants hétérogènes : `550`, `4,8`, `1 071,04`, et `-3 116.50` avec un point dans l'en-tête des cartes.
-- Des lignes de l'ancienne carte X9817 peuvent encore apparaître sur le joint (avoir, remboursement de cotisation).
+- Des lignes de l'ancienne carte X9817 peuvent encore apparaître sur le joint (avoir, remboursement de cotisation). Ce sont des crédits du joint : ils sont ignorés.
 
 **Pièges de Trade Republic**
 
@@ -70,96 +76,67 @@ Les trois sources sont parsables de façon déterministe, et chacune dispose d'u
 
 ## 4. Modèle de classement
 
-Chaque opération reçoit une nature de flux et, si c'est une dépense ou un flux lié à une dépense, une catégorie à deux niveaux.
+Chaque débit reçoit soit une sous-catégorie, soit le statut « non compté ». Un débit non compté reste dans le ledger, mais n'entre dans aucun total. C'est le seul choix laissé à l'utilisateur : le reste est automatique.
 
-**Natures de flux**
+**Traitement par type d'opération**
 
-| Nature | Définition | Exemples de juin | Effet sur les indicateurs |
+| Opération | Traitement | Exemples de juin |
+| --- | --- | --- |
+| Paiement carte : fichier cartes CA, ou « Avoir » TR en sortie | Sous-catégorie par règle marchand, sinon proposition du LLM et validation en lot | Carrefour, Uber Eats, Decathlon |
+| Avoir carte : paiement carte en entrée | Sous-catégorie de son marchand, en déduction (RG-09) | Manomano +199,99 €, Zalando +51 € |
+| Autre débit du joint ou de TR | Règle apprise, sinon question : sous-catégorie ou non compté (RG-06) | Prêt, Octopus Energy, PayPal, virement « Mensuel » vers TR |
+| Ligne de débit différé du joint | Neutralisée d'office, car remplacée par le détail des cartes (RG-03) | Prélèvement carte de 3 116,50 € |
+| Ordre ou versement PEA sur TR | Non compté d'office (RG-11) | DCA 10 €, arrondi 5,25 € |
+| Tout autre crédit | Ignoré (RG-19) | Salaires, remboursement de mutuelle, virements reçus |
+
+**Catégories**
+
+| Catégorie | Sous-catégories | Exemples |
+| --- | --- | --- |
+| Logement | Prêt · Charges & assurances · Énergie · Autre | Mensualités et assurance emprunteur ; copropriété, assurance habitation ; électricité, gaz, eau ; travaux, bricolage |
+| Courses | Supermarché · Commerces · Autre | Carrefour, Intermarché ; boulangerie, boucherie, primeur |
+| Restos | Restaurant · Livraison · Autre | Restaurants, cafés ; Uber Eats, Deliveroo |
+| Loisirs | Sorties · Sport · Vacances · Autre | Cinéma, musées ; Decathlon, club ; Airbnb, Booking |
+| Achats | Vêtements · Maison · Tech · Cadeaux · Autre | H&M ; Ikea, déco ; informatique, téléphonie ; cadeaux offerts ; Amazon sous 50 € |
+| Enfants | Garde/scolaire · Activités · Autre | Crèche, nounou, cantine ; activités ; équipement, jouets |
+| Transport | Voiture · Transports en commun · Train/avion · Autre | Carburant, parking, péages, entretien ; Navigo ; SNCF, billets d'avion ; taxi, VTC |
+| Abonnements | Internet · Streaming · Logiciels · Banque · Autre | Box, forfait mobile ; Spotify, Netflix ; logiciels, IA ; offre bancaire, cotisation carte |
+| Santé | Pharmacie · Médecins · Autre | Pharmacie ; consultations ; optique |
+| Divers | Impôts · Autre | Impôt sur le revenu, taxe foncière ; tout le reste |
+
+Chaque catégorie a une sous-catégorie « Autre », pour ne jamais hésiter. La distinction Fixe/Pilotable est abandonnée.
+
+## 5. Comptes suivis
+
+| Compte | Banque | Vue | Opérations suivies |
 | --- | --- | --- | --- |
-| Dépense | Sortie consommée | Carrefour, prêt, Pajemploi | Dépenses du compte |
-| Revenu | Salaire, revenu financier ou revenu exceptionnel | GROUPAMA VIRT.APTS, dividendes, intérêts | Revenus du mois de paie |
-| Dotation | Virement mensuel prévu vers un compte perso ou la provision | 500 € « Mensuel » vers TR, 300 € vers la provision | Sortie planifiée, hors dépenses |
-| Provision | Reprise depuis la provision, et paiement qu'elle finance | 1 071 € reçus, puis SOPAGI 1 071,04 € | Neutralisé |
-| Épargne | Vers ou depuis l'épargne et les investissements | DCA, arrondis, Versement PEA | Indicateur d'épargne (désépargne en négatif) ; les investissements TR consomment aussi l'enveloppe perso |
-| Complément | Virement ponctuel pour renflouer un compte hors budget | Virement du joint vers TR hors dotation | Affiché comme dépassement financé |
-| Lien à une dépense | Flux qui finance ou rembourse une dépense précise | 250 € « Velo » du joint vers TR | Prend la catégorie de la dépense liée |
-| Remboursement | Avoir marchand ou remboursement de mutuelle | Zalando 51 €, MANOMANO 199,99 €, IGESTION-BCAC 77,90 € | Déduit de la catégorie d'origine |
-| Hors budget | Échanges entre personnes, clôtures de comptes, dépôt de garantie | Wero 10 €, clôture BNPP 473,16 €, dépôt 1 806 € | Listé à part |
-| Neutralisé | Doublon technique | Lignes de débit différé des cartes | Exclu |
+| Compte joint | Crédit Agricole, cartes X1091 et X1481 | Joint | Paiements carte et autres débits du compte |
+| Compte perso d'Antoine | Trade Republic | Perso | Paiements carte et autres débits, hors investissements |
 
-**Catégories (validées pour démarrer)**
+Les virements entre comptes ne sont pas suivis comme tels. Le virement mensuel du joint vers Trade Republic est un débit du joint, déclaré non compté. Les dépenses qu'il finance apparaissent dans la vue perso, sous forme de paiements carte TR.
 
-| Catégorie | Sous-catégories | Nature |
-| --- | --- | --- |
-| Logement | Prêt, Charges copropriété, Assurance habitation | Fixe|
-| Enfants | Garde, Vêtements & équipement, Activités | Mixte |
-| Impôts | Impôt sur le revenu, Taxe foncière | Fixe |
-| Abonnements | Énergie, Internet & mobile, Streaming & musique, Logiciels & IA, Frais bancaires | Fixe |
-| Courses | Supermarché, Commerces de bouche | Pilotable |
-| Restos & commandes | Restaurant, Livraison, Cafés & snacks | Pilotable |
-| Loisirs | Sorties, Sport, Jeux & apps, Voyages | Pilotable |
-| Achats | Vêtements, Maison & déco, High-tech, Divers | Pilotable |
-| Transport | Carburant, Transports en commun, Parking & péages, Entretien véhicule, Train & avion | Mixte |
-| Santé | Pharmacie, Consultations, Optique | Mixte |
-| Cadeaux & dons | Cadeaux, Dons | Pilotable |
-
-La colonne Nature est portée par chaque sous-catégorie. C'est elle qui permet d'isoler les dépenses sur lesquelles on peut agir.
-
-## 5. Structure budgétaire du foyer
-
-Le joint reçoit environ 5 000 € de salaires. Une fois retirés les dotations (1 300 €) et les charges fixes (environ 2 500 €), il reste une enveloppe courante d'environ 1 200 € par mois.
-
-```mermaid
-flowchart LR
-    S["Salaires<br/>~5 000 €"] --> J["Compte joint"]
-    J --> P["Provision impôts et charges<br/>300 €"]
-    J --> A["Perso Antoine (TR)<br/>500 €"]
-    J --> B["Perso Sarah<br/>500 €"]
-    J --> F["Charges fixes<br/>~2 500 €"]
-    J --> C["Enveloppe courante<br/>~1 200 €"]
-    P -. "reprise trimestrielle" .-> J
-```
-
-Les flèches pleines sont les flux mensuels ; la flèche pointillée est la reprise trimestrielle qui finance les charges de copropriété.
-
-| Poste | Montant mensuel | Suivi dans l'outil |
-| --- | --- | --- |
-| Salaires sur le joint | \~5 000 € | Revenus rattachés à leur mois de paie |
-| Dotation provision (épargne impôts et charges) | 300 € | Dotation ; les reprises et les paiements financés sont neutralisés |
-| Dotation perso Antoine (Trade Republic) | 500 € | Dotation ; tout virement au-delà déclenche une question |
-| Dotation perso Sarah | 500 € | Dotation ; tout virement au-delà déclenche une question |
-| Charges fixes | \~2 500 € | Montant réel comparé au montant attendu, poste par poste |
-| Enveloppe courante du joint | \~1 200 € | Écart à l'enveloppe : premier indicateur de la vue joint |
-| Enveloppe perso Antoine | 500 € | Écart à l'enveloppe, investissements TR et compléments reçus inclus : premier indicateur de la vue perso |
-
-Ces montants sont indicatifs. Les valeurs de référence sont stockées dans le fichier de contexte (section 10) et versionnées avec lui.
-
-Exemple de juin : trois virements vers Sarah (500 €, 400 € et 550 €) pour une dotation attendue de 500 €. Les deux virements en trop deviendront des questions au premier run.
+Une dépense n'est ainsi comptée qu'une fois, là où elle est payée. Pour la même raison, un virement qui finance une dépense précise sur l'autre compte est en principe non compté.
 
 ## 6. Règles de gestion
 
-Dix-huit règles encadrent le traitement. Chacune sera couverte par au moins un test sur les données de juin.
+Les règles conservées gardent leur numéro, pour que les références dans le code et les tests restent valides.
 
 | ID | Règle | Exemple |
 | --- | --- | --- |
 | RG-01 | Le mois budgétaire est le mois de débit. La date d'achat est conservée dans le ledger. | Le fichier CB de juin, débité le 30/06, compte pour juin même avec des achats du 23/05. |
 | RG-02 | Un mois n'est traité que si ses trois extractions sont présentes et tous les contrôles sont passés. | Il manque le PDF TR : arrêt avec un message explicite. |
 | RG-03 | Les lignes de débit différé du joint sont neutralisées et remplacées par le détail des cartes. Tout écart différent de 0 € arrête le traitement. | Carte X1091 : 3 116,50 € de chaque côté. |
-| RG-04 | Un salaire est rattaché à son mois de paie : période lue dans le libellé si elle existe, sinon réception entre le 25 de M et le 5 de M+1. | « 05/2026 MALANDAINS » reçu le 01/06 compte pour mai. |
-| RG-05 | Un virement déclaré comme dotation dans le contexte (libellé et montant) est classé sans question. | 500 € « Mensuel » vers TR. |
-| RG-06 | Tout autre virement entre comptes déclenche une question : dotation, épargne, désépargne, complément, lien à une dépense ou hors budget. | 400 € vers Sarah le 26/06. |
-| RG-07 | Un flux lié à une dépense prend sa catégorie : il s'ajoute s'il sort, il se déduit s'il entre. | Vélo : 409,97 € sur TR, 250 € reçus du joint, soit 159,97 € net en vue perso et 250 € en vue joint. |
-| RG-08 | La dotation de la provision est une sortie planifiée. Les reprises depuis la provision et les paiements qu'elles financent sont neutralisés ensemble. | 1 071 € reçus et SOPAGI 1 071,04 € : neutralisés. |
-| RG-09 | Les avoirs marchands et remboursements de mutuelle sont déduits de la catégorie d'origine. | Optique : 77,90 € payés, 77,90 € remboursés, soit 0 €. |
-| RG-10 | Les échanges entre personnes, clôtures de comptes et dépôts sont hors budget, listés à part. | Wero 10 €, Revolut 140 €, chèque 585 €. |
-| RG-11 | Sur Trade Republic : exécutions d'ordres et versements PEA comptent en épargne et s'imputent sur l'enveloppe perso, car ils sont prélevés sur le compte qui la reçoit ; intérêts, dividendes et bonus Saveback en revenus financiers. | DCA 10 €, arrondi 5,25 €, bonus 8,54 €. |
-| RG-12 | Le sens d'une opération Trade Republic se lit dans sa colonne, jamais dans son type. | Zalando 51 € en entrée, de type « Avoir ». |
-| RG-13 | Amazon sous 50 € va en Achats > Divers ; à partir de 50 €, question. | 49,72 € classé automatiquement ; 78,38 € soumis. |
-| RG-14 | PayPal, chèques et virements sans information explicite déclenchent toujours une question. | PayPal 25 € le 04/06. |
-| RG-15 | Une dépense non récurrente d'au moins 500 € reçoit une proposition de tag exceptionnel. | OliverStore 883,16 €. |
+| RG-06 | Tout débit hors paiement carte, sans décision ni règle, déclenche une question : sous-catégorie ou non compté. | Prélèvement Octopus Energy de 68,92 € : Logement › Énergie, avec une règle sur l'identifiant créancier. |
+| RG-09 | Un avoir carte reçoit la sous-catégorie de son marchand et se déduit de son total. | Manomano −199,99 € puis +199,99 € : 0 € en Achats. |
+| RG-10 | Un débit déclaré non compté reste dans le ledger, mais n'entre dans aucun total. | Virements de 500 € « Mensuel » vers TR et de 400 € vers Sarah. |
+| RG-11 | Sur Trade Republic, les exécutions d'ordres et les versements PEA sont non comptés d'office. | DCA 10 €, arrondi 5,25 €. |
+| RG-12 | Le sens d'une opération Trade Republic se lit dans sa colonne, jamais dans son type. | Zalando 51 € en entrée, de type « Avoir » : c'est un avoir carte (RG-09). |
+| RG-13 | Amazon sous 50 € va en Achats › Autre ; à partir de 50 €, question sur la ligne, jamais de règle. | 49,72 € classé automatiquement ; 78,38 € soumis. |
+| RG-14 | PayPal et chèques déclenchent toujours une question, sans règle possible. | PayPal 25 € le 04/06. |
 | RG-16 | Clé de dédoublonnage : source, date, montant, libellé normalisé et rang d'occurrence. Un réimport n'a aucun effet. | Deux cafés VARENNE CAFE à 6,80 € le 24/06 : rangs 1 et 2. |
-| RG-17 | Une opération d'une carte non déclarée dans le contexte déclenche une alerte. | X9817, ancienne carte : lignes classées, mais signalées. |
-| RG-18 | Chaque charge fixe est rapprochée de son montant attendu via son identifiant créancier SEPA. Un écart au-delà du seuil est signalé dans la synthèse. | Octopus Energy 68,92 € contre le montant attendu. |
+| RG-19 | Seuls les débits sont suivis. Les crédits sont lus et contrôlés, puis ignorés, sauf les avoirs carte (RG-09). | Salaires, remboursement de mutuelle de 77,90 € : ignorés. |
+
+**Règles retirées au recadrage** : RG-04 (salaires), RG-05 (dotations), RG-07 (liens à une dépense), RG-08 (provision), RG-15 (exceptionnels), RG-17 (carte inconnue), RG-18 (charges fixes attendues).
 
 ## 7. Mémoire et interaction humaine
 
@@ -167,73 +144,62 @@ Une question tranchée ne revient jamais : chaque réponse devient soit une règ
 
 **Ordre de classement d'une opération**
 
-1. Règles du fichier de contexte : dotations, charges fixes, neutralisations.
-2. Règles apprises lors des runs précédents.
-3. Pour un marchand carte inconnu : proposition de catégorie par le LLM.
-4. Validation humaine en lot dans le terminal. Chaque validation crée une règle.
+1. Règles fixes : crédits ignorés (RG-19), débit différé neutralisé (RG-03), ordres et PEA non comptés (RG-11), Amazon sous le seuil (RG-13).
+2. Décision enregistrée pour l'opération.
+3. Règle apprise la plus spécifique.
+4. Pour un paiement carte d'un marchand inconnu : proposition du LLM.
+5. Validation humaine dans le terminal : en lot pour les paiements carte, une question par opération pour les autres débits.
 
 **Types de règles apprises**
 
 | Type | Clé de correspondance | Exemple |
 | --- | --- | --- |
-| Prélèvement | Identifiant créancier SEPA, avec plage de montant optionnelle | `FR41ZZZ272230` → Logement > Assurance habitation |
-| Marchand carte | Libellé marchand normalisé, avec condition de montant optionnelle | AMAZON PAYMENTS sous 50 € → Achats > Divers |
-| Virement | Libellé normalisé et montant exact ou plage | « VIR INST vers ANTOINE GRUBERT - Mensuel », 500 € → Dotation |
+| Prélèvement et autre débit | Identifiant créancier SEPA, libellé exact ou préfixe ; plage de montant optionnelle | `FR41ZZZ272230` → Logement › Charges & assurances |
+| Virement | Libellé normalisé, avec montant exact ou plage obligatoire | « VIR INST vers ANTOINE GRUBERT - Mensuel », 500 € → non compté |
+| Marchand carte | Clé marchand du libellé | CARREFOUR CITY → Courses › Supermarché |
 | Toujours demander | Identifiant créancier ou libellé | PayPal, identifiant `LU96ZZZ0000000000000000058` |
 
 **Priorité** : la règle la plus spécifique l'emporte. Un identifiant créancier prime sur un libellé exact, qui prime sur un préfixe ; une règle avec condition de montant prime sur une règle sans. Deux règles de même spécificité qui se contredisent sont refusées dès leur création.
 
 **Pas de score de confiance du LLM** : l'auto-évaluation d'un LLM est mal calibrée. Chaque nouveau marchand est donc validé une fois. Le premier run sera chargé (environ 60 marchands distincts en juin), puis la charge décroît avec la couverture des règles.
 
-**Déroulé des questions dans le terminal**, par blocs :
+**Déroulé dans le terminal**, en deux blocs :
 
-1. Virements : un par un, avec des choix numérotés. Pour un lien à une dépense, l'agent propose les dépenses candidates des comptes suivis.
-2. Propositions du LLM : un tableau où Entrée valide tout et où l'on corrige par numéro de ligne.
-3. Tags exceptionnels : oui ou non.
+1. **Débits hors carte**, un par un. Le menu propose les dix catégories et « Non compté », puis la sous-catégorie, puis « En faire une règle ? » (oui, non, toujours demander).
+2. **Paiements carte** : un tableau des marchands inconnus avec la proposition du LLM. Entrée valide tout ; un numéro corrige une ligne, vers une autre sous-catégorie ou vers « non compté ». Chaque marchand validé devient une règle.
 
-À chaque réponse sur un virement, l'agent demande s'il faut en faire une règle. Le vélo est un cas unique ; la dotation « Mensuel » est une règle.
+Une question couverte par une règle créée plus tôt dans le même dialogue est sautée : après la règle sur un premier virement vers Sarah, le second n'est pas reposé. `q` quitte à tout moment ; les réponses déjà données sont conservées.
 
-**Stockage** : SQLite est la source de vérité (tables des règles, des questions et des décisions). Un journal `decisions.md` est régénéré à chaque run pour la lecture humaine, avec date, question, réponse et règle créée.
+**Stockage** : SQLite est la source de vérité (règles, questions, décisions, propositions du LLM). `budget rules list` et `budget rules disable <id>` servent à auditer la mémoire.
 
-## 8. Indicateurs et restitution Google Sheets
+## 8. Restitution
 
-Chaque indicateur répond à l'une des trois questions de la section 1. Tous sont calculés par le code ; le LLM ne fait que les commenter.
+**Disponible**
 
-| Question | Indicateurs | Vue |
-| --- | --- | --- |
-| Combien par rapport à l'enveloppe ? | Écart à l'enveloppe courante du joint ; écart à l'enveloppe perso, investissements TR et compléments reçus inclus ; charges fixes réelles contre attendues | Joint, Perso |
-| Quelle catégorie agir ? | Classement des catégories pilotables en euros et en écart à leur budget ; écart à la moyenne des 3 derniers mois hors exceptionnels | Joint, Perso |
-| Quand et pourquoi le budget explose-t-il ? | Dépenses mensuelles sur 12 mois glissants, dont exceptionnels ; cumul et nombre d'exceptionnels sur 12 mois ; commentaire de chaque pic | Synthèse |
-| Épargne (bonus) | Dotation provision, plus investissements TR, plus épargne ponctuelle, moins désépargne | Synthèse |
+- À la fin de `budget classify` : les dépenses comptées du mois par catégorie, en vue joint et en vue perso, et le nombre d'opérations encore en attente.
+- `budget export` écrit le CSV du mois. Il contient une ligne par débit et par avoir carte, avec ces colonnes : date d'opération, date de débit, compte, libellé, montant, catégorie, sous-catégorie, comptée (oui ou non) et règle appliquée.
 
-**Structure du Google Sheet** (Google Sheets natif, créé à la main)
-
-- **Synthèse** : une ligne par mois, avec les colonnes revenus du joint, dotations, charges fixes réelles et attendues, dépenses courantes du joint, écart joint, dépenses perso, écart perso, épargne nette, dont exceptionnels, et commentaire de l'agent. Un graphique montre l'évolution sur 12 mois.
-- **Un onglet par mois (`2026-06`)** : toutes les opérations des deux vues avec un filtre actif. Colonnes : date d'opération, date de débit, compte, libellé, montant, nature, catégorie, sous-catégorie, exceptionnel, lien, règle appliquée. Un récapitulatif par catégorie et un graphique de répartition complètent l'onglet.
-- **Règles** (lecture seule) : un miroir des règles apprises, régénéré à chaque run, pour les consulter sans ouvrir la base.
-
-**Principe** : le Sheet est une projection régénérable du ledger. Toute modification manuelle est écrasée au run suivant, et un bandeau le rappelle en tête de chaque onglet.
-
-Un onglet par mois donne 12 onglets par an. C'est acceptable pour le MVP ; si le fichier devient lourd, on passera à un onglet « Opérations » unique avec des vues filtrées par mois.
+**En attente (étapes 8 à 10)** : totaux sur plusieurs mois, commentaire de l'agent synthèse et publication Google Sheets. Leurs indicateurs seront redéfinis dans la spec 08 à partir de ce périmètre. Pistes : total par catégorie et par mois, écart à un budget par catégorie, évolution sur 12 mois.
 
 ## 9. Architecture technique
 
-Le traitement est un pipeline Python en dix étapes, dont deux seulement appellent le LLM. Il s'appuie sur PydanticAI v2, stable depuis le 23 juin 2026 ([politique de versions](https://pydantic.dev/docs/ai/project/version-policy/)).
+Le traitement est un pipeline Python dont une seule étape appelle le LLM. Il s'appuie sur PydanticAI v2, stable depuis le 23 juin 2026 ([politique de versions](https://pydantic.dev/docs/ai/project/version-policy/)).
 
 ```mermaid
 flowchart TD
-    A["Extractions du mois<br/>(dossier Drive local)"] --> B["Parsers + contrôles"]
+    A["Extractions du mois<br/>(dossier local)"] --> B["Parsers + contrôles"]
     B --> C["Ledger SQLite<br/>(dédoublonné)"]
-    C --> D["Natures de flux<br/>+ questions virements"]
-    D --> E["Règles apprises"]
-    E --> F["Agent catégoriseur (LLM)<br/>marchands inconnus"]
-    F --> G["Validation terminal<br/>→ nouvelles règles"]
-    G --> H["Agrégats (code)"]
-    H --> I["Agent synthèse (LLM)"]
-    I --> J["Publication Google Sheets"]
+    C --> D["Débits et avoirs carte<br/>(autres crédits ignorés)"]
+    D --> E["Règles fixes, décisions<br/>et règles apprises"]
+    E --> F["Questions<br/>débits hors carte"]
+    E --> G["Agent catégoriseur (LLM)<br/>marchands inconnus"]
+    G --> H["Validation en lot<br/>→ nouvelles règles"]
+    F --> I["Dépenses par catégorie<br/>+ export CSV"]
+    H --> I
+    I -.-> J["En attente : agent synthèse,<br/>Google Sheets"]
 ```
 
-Seuls les nœuds F et I appellent le modèle. Les questions sur les virements (nœud D) sont posées par du code, sans LLM.
+Seul le nœud G appelle le modèle. Les questions sur les débits hors carte (nœud F) sont posées par du code, sans LLM.
 
 **Stack**
 
@@ -241,17 +207,22 @@ Seuls les nœuds F et I appellent le modèle. Les questions sur les virements (n
 | --- | --- | --- |
 | Langage | Python 3.12 | `StrEnum`, typage moderne |
 | Framework agent | `pydantic-ai` v2 | Sortie structurée typée, tests sans appel réseau, outils différés pour la phase 2 |
-| Modèles | Claude Haiku 4.5 pour l'agent catégoriseur Claude Sonnet 5 pour l'agent de synthèse | Tâche courte et peu coûteuse pour la catégorisation ; qualité plus importante requise pour la synthèse |
+| Modèle | Claude Haiku 4.5 pour l'agent catégoriseur ; synthèse à définir avec l'étape 8 | Tâche courte et peu coûteuse |
 | PDF | `pdfplumber` | Coordonnées des mots, approche validée sur juin |
 | CSV | Module `csv` de la bibliothèque standard, lu en cp1252 | Gère nativement les libellés multi-lignes entre guillemets |
 | Montants | `decimal.Decimal` | Jamais de `float` pour de l'argent |
 | Stockage | SQLite | Ledger, règles, questions et décisions dans un seul fichier facile à sauvegarder |
 | Contexte | YAML validé par un modèle Pydantic | Éditable à la main, erreurs détectées au chargement |
-| Google Sheets | `gspread`, plus des requêtes `batchUpdate` brutes | Simple pour les valeurs ; graphiques et filtres via l'API |
-| Auth Google | Compte de service avec lequel le Sheet est partagé | Pas de flux OAuth interactif ; le Sheet est créé à la main |
+| Google Sheets | `gspread` (étape 9, en attente) | Simple pour les valeurs |
 | CLI | Typer et Rich | Commandes et tableaux lisibles dans le terminal |
 
-**Commandes** : `budget run --mois 2026-06` enchaîne `import`, `classify` (avec les questions) et `publish`, chacune lançable seule. `budget rules list` et `budget rules disable <id>` servent à auditer la mémoire.
+**Commandes**
+
+- `budget import --mois 2026-06` : contrôle et importe les trois extractions du mois.
+- `budget classify --mois 2026-06` : classe le mois, pose les questions et déroule la validation en lot.
+- `budget export --mois 2026-06` : écrit le CSV du mois.
+- `budget rules list` et `budget rules disable <id>` : audit de la mémoire.
+- `budget config verifier` : validation du fichier de contexte.
 
 **Modèle de données** (extrait)
 
@@ -263,19 +234,6 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 
-class Nature(StrEnum):
-    DEPENSE = "depense"
-    REVENU = "revenu"
-    DOTATION = "dotation"
-    PROVISION = "provision"
-    EPARGNE = "epargne"
-    COMPLEMENT = "complement"
-    LIEN_DEPENSE = "lien_depense"
-    REMBOURSEMENT = "remboursement"
-    HORS_BUDGET = "hors_budget"
-    NEUTRALISE = "neutralise"
-
-
 class SousCategorie(StrEnum):
     # Une seule énumération à plat : la catégorie parente se déduit du préfixe,
     # ce qui rend impossible un couple catégorie/sous-catégorie incohérent.
@@ -285,25 +243,28 @@ class SousCategorie(StrEnum):
     # ... liste complète : section 4
 
 
-class Transaction(BaseModel):
+class Transaction(BaseModel):  # faits lus dans le fichier
     id: str  # clé de dédoublonnage (RG-16)
     source: str  # "ca_cb" | "ca_joint" | "tr"
     compte: str  # "joint" | "perso"
     date_operation: date
     mois_budgetaire: str = Field(pattern=r"^\d{4}-\d{2}$")  # RG-01
-    libelle_brut: str
+    libelle: str
     libelle_normalise: str
     type_operation: str | None = None  # 1re ligne CA ou colonne Type TR
     ics: str | None = None  # identifiant créancier SEPA
     carte: str | None = None
     montant: Decimal  # négatif = sortie
-    nature: Nature | None = None
-    sous_categorie: SousCategorie | None = None
-    exceptionnel: bool = False
-    lien_id: str | None = None  # RG-07
+
+
+class Classement(BaseModel):  # recalculé à chaque classify
+    transaction_id: str
+    sous_categorie: SousCategorie | None = None  # comptée dans cette sous-catégorie
+    non_comptee: bool = False  # RG-03, RG-10, RG-11
+    # Ni l'un ni l'autre : en attente d'une question ou de la validation en lot.
 ```
 
-**Agent catégoriseur** : un seul appel par run, qui reçoit la liste des libellés marchands inconnus. Grâce à l'énumération, il ne peut renvoyer qu'une sous-catégorie existante.
+**Agent catégoriseur** : un seul appel par run, qui reçoit la liste des libellés marchands inconnus. Grâce à l'énumération, il ne peut renvoyer qu'une sous-catégorie existante ; « non compté » ne lui est jamais proposé.
 
 ```python
 from pydantic import BaseModel
@@ -330,150 +291,92 @@ propositions = categoriseur.run_sync("\n".join(libelles_inconnus)).output
 
 Le code vérifie ensuite que chaque libellé soumis a exactement une proposition, et relance l'appel sinon.
 
-**Agent synthèse** : il reçoit les agrégats calculés au format JSON et le contexte, et renvoie un commentaire structuré (points clés, alertes). Il ne calcule rien.
-
-**Phase 2** : les questions asynchrones s'appuieront sur les [outils différés](https://pydantic.dev/docs/ai/tools-toolsets/deferred-tools/) de PydanticAI. Un outil `demander_utilisateur` lève `CallDeferred`, le run se termine avec `DeferredToolRequests`, puis un run suivant reprend avec `DeferredToolResults` une fois la réponse saisie dans le Sheet. En mode terminal, le même outil peut être résolu sur place par la capability `HandleDeferredToolCalls` : un seul code d'agent, deux modes de réponse.
+**Phase 2** : les questions asynchrones s'appuieront sur les [outils différés](https://pydantic.dev/docs/ai/tools-toolsets/deferred-tools/) de PydanticAI. Un outil `demander_utilisateur` lève `CallDeferred`, le run se termine avec `DeferredToolRequests`, puis un run suivant reprend avec `DeferredToolResults` une fois la réponse saisie ailleurs. En mode terminal, le même outil peut être résolu sur place par la capability `HandleDeferredToolCalls` : un seul code d'agent, deux modes de réponse.
 
 ## 10. Fichier de contexte
 
-Le fichier `contexte.yaml` porte toutes les valeurs de référence du foyer. Il est prérempli ci-dessous avec les données de juin ; les valeurs `null` sont à compléter.
+Le fichier `contexte.yaml` ne porte plus que les paramètres de l'outil. Les charges fixes, dotations et salaires ne sont plus déclarés : les règles apprises les remplacent dès la première réponse.
 
 ```yaml
-# contexte.yaml : référence du foyer. Données personnelles : stocké hors du repo de code.
-version: 1
-
-comptes:
-  joint: {banque: credit_agricole, cartes_actives: [X1091, X1481], cartes_inactives: [X9817]}
-  perso_antoine: {banque: trade_republic}
-
-salaires:
-  - {nom: salaire_1, libelle_contient: "GROUPAMA GAN VIE VIRT.APTS", montant_approx: 2730}
-  - {nom: salaire_2, libelle_contient: "PLUME", periode_regex: '(\d{2}/\d{4}) MALANDAINS', montant_approx: 2500}
-fenetre_salaire: {du_jour: 25, au_jour_mois_suivant: 5}  # RG-04
-
-dotations:  # RG-05 : classées sans question
-  - {nom: perso_antoine, libelle_contient: "VIR INST vers ANTOINE GRUBERT - Mensuel", montant: 500}
-  - {nom: perso_sarah, libelle_contient: "Virement du mois", montant: 500}  # 550 € en juin : à confirmer
-  - {nom: provision, libelle_contient: "Charges - Charges trim", montant: 300}
-
-provision:  # RG-08
-  reprises_libelle_contient: "Charges trim MONSIEUR GRUBERT"
-  paiements_finances:
-    - {nom: copropriete, ics: FR48ZZZ829660, periodicite: trimestrielle}
-    # impôts : à ajouter s'ils transitent par le joint
-
-charges_fixes:  # RG-18
-  - {nom: pret_principal, type_operation: "Remboursement de prêt", montant: 1787.46, sous_categorie: logement.pret}
-  - {nom: pret_secondaire, type_operation: "Remboursement de prêt", montant: 121.89, sous_categorie: logement.pret}
-  - {nom: assurance_emprunteur, libelle_contient: "ASSU. CAAE PRET HABITAT", montant: 67.48, sous_categorie: logement.assurance_emprunteur}
-  - {nom: assurance_habitation, ics: FR41ZZZ272230, montant: 43.77, sous_categorie: logement.assurance_habitation}
-  - {nom: garde_enfant, ics: FR67ZZZ308137, montant: 668.24, tolerance_pct: 25, sous_categorie: enfants.garde}
-  - {nom: energie, ics: DE56AGR00002197951, montant: 68.92, sous_categorie: abonnements.energie}
-  - {nom: internet, ics: FR83ZZZ459654, montant: 23.99, sous_categorie: abonnements.internet_mobile}
-  - {nom: banque_offre, libelle_contient: "Offre Premium", montant: 15.50, sous_categorie: abonnements.frais_bancaires}
-
-enveloppes:
-  joint_courant: 1200
-  perso_antoine: 500
-
-budgets_sous_categories:  # optionnel, par mois
-  courses.supermarche: null
-  restos.livraison: null
-  loisirs.sorties: null
-
-depenses_annuelles_connues:
-  - {nom: cotisation_carte, mois: 6, montant: 144, sous_categorie: abonnements.frais_bancaires}
-  - {nom: taxe_fonciere, mois: null, montant: null, sous_categorie: impots.taxe_fonciere}
-  - {nom: vacances_ete, mois: [7, 8], montant: null, sous_categorie: loisirs.voyages}
-
-mois_particuliers:
-  - {mois: 11, sens: revenu, motif: "13e mois", montant_approx: null}
+# contexte.yaml : paramètres du foyer, stocké hors du repo de code.
+version: 2
 
 seuils:
-  exceptionnel: 500           # RG-15
-  amazon_auto: 50             # RG-13
-  ecart_charge_fixe_pct: 10   # RG-18, sauf tolérance propre à la charge
+  amazon_auto: 50  # RG-13
 
 llm:
   modele_categorisation: "anthropic:claude-haiku-4-5"
-  modele_synthese: "anthropic:claude-haiku-4-5"
 ```
 
-Au chargement, un modèle Pydantic valide le fichier : clé inconnue, sous-catégorie inexistante ou montant mal typé arrêtent le run avec un message précis.
+Au chargement, un modèle Pydantic valide le fichier : une clé inconnue ou un montant mal typé arrête le run avec un message précis. Des budgets par catégorie pourront y être ajoutés avec l'étape 8.
 
 ## 11. Contrôles, tests et confidentialité
 
-Aucune publication n'a lieu tant qu'un contrôle échoue, et aucune donnée personnelle hors libellés marchands ne part vers le LLM.
+Aucune restitution n'a lieu tant qu'un contrôle échoue, et aucune donnée personnelle hors libellés marchands ne part vers le LLM.
 
-**Contrôles bloquants avant publication**
+**Contrôles bloquants**
 
 - Carte par carte, le net de l'extraction CB est égal à la ligne de débit différé du joint (RG-03).
 - Le solde Trade Republic est cohérent ligne à ligne, et les totaux égalent la synthèse du relevé.
-- Les trois extractions du mois sont présentes (RG-02).
-- Chaque opération a une nature, et chaque dépense une sous-catégorie.
-- La somme des catégories est égale au total des dépenses de chaque vue.
+- Les trois extractions du mois sont présentes et couvrent bien le mois demandé (RG-02).
+- Avant toute restitution (étape 8) : chaque opération suivie est comptée dans une sous-catégorie, ou non comptée.
 
-**Tests**
+**Tests**, limités au cœur du moteur :
 
-- Jeux de test anonymisés construits à partir de juin et juillet 2026 : noms, IBAN, numéros de contrat et de compte remplacés, montants et structure conservés.
-- Tests unitaires des parsers, dont tous les formats de montants rencontrés.
-- Tests du moteur de règles : priorité, conflit refusé, condition de montant.
-- Test de bout en bout sur juin avec un modèle de test PydanticAI (sans appel réseau), et résultats attendus figés (golden files).
+- Parsers, dont tous les formats de montants et de dates rencontrés, et contrôles du débit différé et du solde TR.
+- Import : complétude (RG-02) et dédoublonnage (RG-16).
+- Moteur de règles : priorité, conflit refusé, condition de montant.
+- Agent catégoriseur avec un modèle de test PydanticAI (sans appel réseau), et confidentialité de ce qui lui est envoyé.
+- Un test de bout en bout sur juin et juillet : import, réponses scriptées, validation en lot, totaux par catégorie figés.
+- Jeux de test anonymisés construits à partir de juin et juillet 2026 : noms, IBAN, numéros de contrat et de compte remplacés, montants et structure conservés. Un test dédié vérifie l'anonymisation.
 
 **Confidentialité**
 
-- Seuls les libellés marchands des paiements carte sont envoyés au LLM. Virements et prélèvements sont traités par règles ou par question.
+- Seuls les libellés marchands des paiements carte sont envoyés au LLM. Les autres débits sont traités par règles ou par question.
 - Défense en profondeur : les IBAN et séquences de 6 chiffres ou plus sont masqués avant tout appel. Un test échoue si un IBAN apparaît dans un prompt.
-- Le repo git contient le code et les jeux de test anonymisés. Le dossier `data/` (extractions, ledger, règles, journal, contexte) est exclu du repo et sauvegardé sur Drive.
-- Les secrets (clé Anthropic, clé du compte de service Google) sont dans `.env` et ignorés par git.
+- Le repo git contient le code et les jeux de test anonymisés. Le dossier `data/` (extractions, ledger, contexte) est exclu du repo et sauvegardé sur Drive.
+- Les secrets (clé Anthropic, plus tard clé du compte de service Google) sont dans `.env` et ignorés par git.
 
 Le cadrage initial prévoyait une « table de règles versionnée » dans le livrable. Elle contient des libellés personnels : elle est versionnée dans la sauvegarde `data/`, pas dans le repo.
 
 ## 12. Risques et parades
 
-Le risque principal n'est pas technique : c'est l'abandon de l'outil si les questions sont trop nombreuses au démarrage.
+Le risque principal n'est pas technique : c'est l'abandon de l'outil s'il demande trop d'effort, au démarrage comme à l'usage.
 
 | Risque | Impact | Parade |
 | --- | --- | --- |
-| Trop de questions au premier run (environ 60 marchands, plus les virements) | Abandon de l'outil | Validation en lot (Entrée = tout valider), amorçage sur juin pendant le développement |
-| Changement de format d'un export CA ou du PDF TR | Montants faux ou manquants | Contrôles bloquants, positions de colonnes TR relues sur chaque page, tests golden |
+| Trop de questions au premier run (environ 60 marchands et une vingtaine de débits du joint) | Abandon de l'outil | Validation en lot (Entrée = tout valider), règle proposée à chaque réponse |
+| Outil trop complexe pour le besoin | Abandon de l'outil | Recadrage d'octobre 2026 : un seul choix par débit, sous-catégorie ou non compté |
+| Changement de format d'un export CA ou du PDF TR | Montants faux ou manquants | Contrôles bloquants, positions de colonnes TR relues sur chaque page, tests sur fixtures |
 | Erreur de catégorisation du LLM | Statistiques faussées | Validation humaine de chaque nouveau marchand, sous-catégories en énumération fermée |
-| Règle devenue fausse (même libellé, autre usage) | Mauvais classement silencieux | Règles de virement liées au montant, commande d'audit des règles, journal des décisions |
-| Modification manuelle du Sheet | Travail écrasé au run suivant | Sheet traité comme une projection, bandeau d'avertissement dans chaque onglet |
+| Règle devenue fausse (même libellé, autre usage) | Mauvais classement silencieux | Règles de virement liées au montant, `budget rules list` et `budget rules disable` |
+| Virement entre comptes compté en plus de la dépense qu'il finance | Dépenses surestimées | Virement non compté, dépense comptée là où elle est payée (section 5) |
 | Mois incomplet (extraction oubliée) | Dépenses sous-estimées | RG-02 : pas de traitement sans les trois fichiers |
-| Échec d'authentification ou de quota Google | Publication impossible | Compte de service, publication idempotente et rejouable seule (`budget publish`) |
 | Fuite de données personnelles | Confidentialité | Section 11 : seuls les libellés marchands partent au LLM, `data/` hors du repo |
-| Historique trop court | Question 3 (saisonnalité) sans réponse avant un an | Importer l'historique disponible dès l'initialisation (voir points ouverts) |
+| Historique trop court | Évolution d'un mois à l'autre peu lisible avant plusieurs mois | Importer l'historique disponible dès l'initialisation (voir points ouverts) |
 
 ## 13. Points ouverts
 
-Aucun de ces points ne bloque le démarrage ; les deux premiers sont à trancher avant l'étape 5 du plan.
-
-- [ ] Le compte de provision (300 € par mois) finance-t-il aussi les impôts, et si oui, les impôts transitent-ils par le joint ? => A priori les impots seront une dépense annuelle à part, financée par un virement exceptionnel sur le joint.
-- [ ] Combien de mois d'historique importer à l'initialisation ? => Au moins 6 mois pour commencer voire 12 si possible.
-- [ ] Nature des virements vers Sarah en juin (500 €, 400 €, 550 €) : quel libellé porte la dotation ? => Ce point se réglera par les questions du premier run.
-- [ ] Budgets par sous-catégorie à renseigner dans le contexte (optionnels au départ).
-- [ ] Montants et mois des dépenses annuelles connues : taxe foncière, impôts, assurance auto, vacances.
+- [ ] Combien de mois d'historique importer à l'initialisation ? => Au moins 6 mois pour commencer, voire 12 si possible.
+- [ ] Budgets par catégorie : à définir avec la spec 08, s'ils sont utiles.
+- [ ] Indicateurs, synthèse et publication (étapes 8 à 10) : à redéfinir à partir de ce périmètre.
 
 ## 14. Plan de réalisation
 
-Le MVP représente 14 à 17 sessions.&#32;
+| Étape | Livrable | État |
+| --- | --- | --- |
+| 1 | Socle : repo, jeux de test anonymisés, modèles Pydantic, chargement du contexte | Fait |
+| 2 | Parsers Crédit Agricole (cartes et joint) et contrôle du débit différé | Fait |
+| 3 | Parser Trade Republic par position de colonne et contrôle de solde | Fait |
+| 4 | Ledger SQLite, dédoublonnage, mois budgétaire | Fait |
+| 5 | Natures de flux : dotations, provision, charges fixes, neutralisations | Fait, puis retiré au recadrage |
+| 6 | Questions dans le terminal et règles apprises | Fait, simplifié au recadrage |
+| 7 | Agent catégoriseur, validation en lot, règles marchand, export CSV | Fait |
+| R | Recadrage : élagage du code, nouvelles catégories, base neuve, nouveau test sur juin et juillet | En cours |
+| 8 | Dépenses par catégorie et agent synthèse | Spec à réécrire |
+| 9 | Publication Google Sheets | En attente |
+| 10 | Run complet, puis import de l'historique | En attente |
 
-| Étape | Livrable | Type | Complexité | Soirées |
-| --- | --- | --- | --- | --- |
-| 1 | Socle : repo, jeux de test anonymisés, modèles Pydantic, chargement du contexte | Code | Simple | 1 |
-| 2 | Parsers Crédit Agricole (cartes et joint) et contrôle du débit différé | Code | Moyenne | 1 à 2 |
-| 3 | Parser Trade Republic par position de colonne et contrôle de solde | Code | Moyenne à complexe | 2 |
-| 4 | Ledger SQLite, dédoublonnage, mois budgétaire, rattachement des salaires | Code | Simple | 1 |
-| 5 | Natures de flux : dotations, provision, charges fixes, neutralisations | Mixte : remplir `contexte.yaml` ici, puis le moteur dans Claude Code | Moyenne | 2 |
-| 6 | Questions sur les virements et liens à une dépense | Code | Moyenne | 1 à 2 |
-| 7 | Agent catégoriseur, validation en lot, règles apprises, journal (cœur agentique) | Code | Moyenne | 2 |
-| 8 | Agrégats et agent synthèse | Code | Simple à moyenne | 1 |
-| 9 | Publication Google Sheets : valeurs, filtres, graphiques | Mixte : créer le Sheet et le compte de service ici, puis la publication dans Claude Code | Moyenne | 2 |
-| 10 | Run complet sur juin, puis import de l'historique | Organisationnel : exécuter, répondre aux questions, valider les résultats, récupérer les exports | Simple | 1 |
+**Jalon 1 (étapes 1 à 7 et recadrage)** : juin et juillet classés dans le nouveau périmètre, validés dans le terminal et exportables en CSV. C'est le moment de juger la qualité du classement avant d'investir dans la restitution.
 
-Les étapes « Code » sont réalisées entièrement dans Claude Code. Les étapes « Organisationnel » et la partie préparatoire des étapes « Mixte » se font dans ce projet, avec l'état du code disponible via l'export repomix.
-
-**Jalon 1 (étapes 1 à 7)** : juin entièrement classé, validé dans le terminal et exportable en CSV. C'est le moment de juger la qualité du classement avant d'investir dans la restitution.
-
-**Jalon 2 (étapes 8 à 10)** : Sheet publié avec synthèse et commentaire, et historique importé.
+**Jalon 2 (étapes 8 à 10)** : à redéfinir après le jalon 1.

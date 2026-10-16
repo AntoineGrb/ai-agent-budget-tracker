@@ -1,1 +1,1 @@
-"""Restitution : lignes d'opérations, export CSV et journal des décisions (spec 07)."""
+"""Restitution : lignes d'opérations, dépenses par catégorie et export CSV (cadrage §8)."""

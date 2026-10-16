@@ -23,21 +23,6 @@ class Compte(StrEnum):
     PERSO = "perso"
 
 
-class Nature(StrEnum):
-    """Nature de flux d'une opération (cadrage §4), utilisée à partir de l'étape 5."""
-
-    DEPENSE = "depense"
-    REVENU = "revenu"
-    DOTATION = "dotation"
-    PROVISION = "provision"
-    EPARGNE = "epargne"
-    COMPLEMENT = "complement"
-    LIEN_DEPENSE = "lien_depense"
-    REMBOURSEMENT = "remboursement"
-    HORS_BUDGET = "hors_budget"
-    NEUTRALISE = "neutralise"
-
-
 class OperationBrute(BaseModel):
     """Opération telle que lue par un parser, avant tout classement."""
 
@@ -67,7 +52,7 @@ class OperationBrute(BaseModel):
 
 class Transaction(BaseModel):
     """Opération du ledger : les faits lus dans le fichier, plus l'identifiant (RG-16) et le mois
-    budgétaire (RG-01). Tout ce qui dépend du contexte ou des règles est une projection à part."""
+    budgétaire (RG-01). Tout ce qui dépend des règles est une projection à part."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

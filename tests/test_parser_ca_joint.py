@@ -68,7 +68,7 @@ def test_juin_ics_uniquement_sur_les_prelevements(juin: ReleveJoint) -> None:
 
 
 def test_juin_cartes_extraites_des_libelles(juin: ReleveJoint) -> None:
-    """RG-17 : la carte est extraite ici, y compris l'ancienne X9817 (alerte à l'étape 5)."""
+    """La carte est extraite du libellé, y compris celle de l'ancienne X9817."""
     assert sorted(
         (op.type_operation or "", op.carte or "") for op in juin.operations if op.carte
     ) == [

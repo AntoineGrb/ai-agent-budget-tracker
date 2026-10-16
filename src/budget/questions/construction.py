@@ -1,92 +1,49 @@
-"""Quelles questions poser, et dans quel ordre (spec 06). Fonctions pures."""
+"""Quelles questions poser, et dans quel ordre (RG-06). Fonctions pures."""
 
 from collections.abc import Iterable, Sequence
 
 from budget.classement.cartes import est_paiement_carte
 from budget.classement.modeles import ResultatClassement
-from budget.classement.virements_internes import est_virement_joint, est_virement_tr
-from budget.config import Contexte
-from budget.models import Nature, Source, Transaction
+from budget.classement.trade_republic import TYPE_VIREMENT, type_tr
+from budget.libelles import normaliser_libelle
+from budget.models import Source, Transaction
 from budget.questions.modeles import Question, TypeQuestion
 from budget.regles import Regle, toujours_demander
-from budget.salaires import rattacher_salaire
+
+_TYPES_VIREMENT_JOINT = {"VIREMENT EMIS", "VIREMENT EN VOTRE FAVEUR"}
 
 
 def est_virement(transaction: Transaction) -> bool:
-    """RG-06 : virement du joint, ou virement TR hors versement PEA."""
-    return est_virement_joint(transaction) or est_virement_tr(transaction)
-
-
-def _ordre(question: Question) -> tuple[object, ...]:
-    """Chronologique, joint avant TR à date égale."""
-    t = question.transaction
-    return (t.date_operation, t.source is Source.TR, t.position)
+    if transaction.source is Source.CA_JOINT:
+        return normaliser_libelle(transaction.type_operation or "") in _TYPES_VIREMENT_JOINT
+    return transaction.source is Source.TR and type_tr(transaction) == TYPE_VIREMENT
 
 
 def construire_questions(
-    transactions: Sequence[Transaction],
-    resultat: ResultatClassement,
-    contexte: Contexte,
-    regles: Iterable[Regle],
+    transactions: Sequence[Transaction], resultat: ResultatClassement, regles: Iterable[Regle]
 ) -> list[Question]:
-    """Questions du mois : virements, puis salaires, puis autres opérations hors carte."""
+    """RG-06 : une question par débit hors carte en attente, chronologique, joint avant TR."""
     regles = list(regles)
     par_id = {t.id: t for t in transactions}
-    classements = {c.transaction_id: c for c in resultat.classements}
-    virements: list[Question] = []
-    salaires: list[Question] = []
-    operations: list[Question] = []
-    for t in transactions:
-        classement = classements[t.id]
-        if (
-            classement.nature is Nature.REVENU
-            and (classement.detail or "").startswith("salaires.")
-            and classement.mois_rattachement is None
-        ):  # RG-04 : mois de paie à déterminer
-            rattachement = rattacher_salaire(t, contexte)
-            assert rattachement is not None
-            salaires.append(
-                Question(
-                    type=TypeQuestion.SALAIRE,
-                    motif="RG-04",
-                    transaction=t,
-                    mois_possibles=rattachement.mois_possibles,
-                    nom_salaire=rattachement.nom,
-                    regle_proposable=False,
-                )
-            )
-            continue
-        if classement.nature is not None or est_paiement_carte(t):
-            continue  # paiements carte : sous-catégorie à l'étape 7
-
-        contrepartie = par_id.get(classement.contrepartie_id or "")
-        if contrepartie is not None and classements[contrepartie.id].nature is not None:
-            contrepartie = None  # l'autre côté est déjà classé : question sur ce côté seul
-        if t.source is Source.TR and contrepartie is not None:
-            continue  # une paire produit une seule question, portée par le côté joint
-
+    questions = []
+    for classement in resultat.classements:
+        t = par_id[classement.transaction_id]
+        if classement.decidee or est_paiement_carte(t):
+            continue  # paiements carte : validation en lot
         demander = toujours_demander(regles, t)  # RG-14
-        if est_virement(t):
-            virements.append(
-                Question(
-                    type=TypeQuestion.VIREMENT,
-                    motif="RG-14" if demander else "RG-06",
-                    transaction=t,
-                    contrepartie=contrepartie,
-                    regle_proposable=not demander,
-                )
+        questions.append(
+            Question(
+                type=TypeQuestion.VIREMENT if est_virement(t) else TypeQuestion.OPERATION,
+                motif="RG-14" if demander else "RG-06",
+                transaction=t,
+                regle_proposable=not demander,
             )
-        else:
-            operations.append(
-                Question(
-                    type=TypeQuestion.OPERATION,
-                    motif="RG-14" if demander else "non_classe",
-                    transaction=t,
-                    regle_proposable=not demander,
-                )
-            )
-    return (
-        sorted(virements, key=_ordre)
-        + sorted(salaires, key=_ordre)
-        + sorted(operations, key=_ordre)
+        )
+    return sorted(
+        questions,
+        key=lambda q: (
+            q.transaction.date_operation,
+            q.transaction.source is Source.TR,
+            q.transaction.position,
+        ),
     )

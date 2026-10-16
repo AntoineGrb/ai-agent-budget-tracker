@@ -9,7 +9,7 @@ from budget.classement.cartes import GroupeMarchand
 from budget.errors import ControleError
 from budget.models import Source
 from tests.conftest import fabriquer_transaction
-from tests.scenarios.juin import AppelsCategoriseur, modele_propositions
+from tests.scenarios.reference import AppelsCategoriseur, modele_propositions
 
 
 @pytest.mark.parametrize(
@@ -53,7 +53,7 @@ def test_iban_et_six_chiffres_masques_dans_le_prompt() -> None:
         _groupe("VIR FR7630006000011234567890189"),
         _groupe("MAGASIN 1234567", Source.TR),
     ]
-    propositions = {"VIR [IBAN]": "achats.divers", "MAGASIN #######": "achats.divers"}
+    propositions = {"VIR [IBAN]": "achats.autre", "MAGASIN #######": "achats.autre"}
     resultat = CategoriseurLLM(modele_propositions(appels, propositions)).proposer(groupes)
     assert appels.prompts == ["MAGASIN #######\nVIR [IBAN]"]
     assert not contient_iban(_tout_le_texte(appels))
