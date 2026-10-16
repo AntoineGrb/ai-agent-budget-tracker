@@ -10,6 +10,7 @@ marchands carte inconnus.
 uv run budget import --mois 2026-06     # contrôle et importe les trois extractions
 uv run budget classify --mois 2026-06   # questions dans le terminal, puis validation des cartes
 uv run budget export --mois 2026-06     # CSV du mois dans data/exports/
+uv run budget synthese --mois 2026-06   # dépenses par catégorie, commentées par le LLM
 ```
 
 Cadrage : `docs/cadrage.md`. Spécifications par étape : `.claude/plan/`.

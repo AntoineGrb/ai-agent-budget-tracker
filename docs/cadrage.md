@@ -225,6 +225,7 @@ Seul le nœud G appelle le modèle. Les questions sur les débits hors carte (n�
 - `budget import --mois 2026-06` : contrôle et importe les trois extractions du mois.
 - `budget classify --mois 2026-06` : classe le mois, pose les questions et déroule la validation en lot.
 - `budget export --mois 2026-06` : écrit le CSV du mois.
+- `budget synthese --mois 2026-06` : contrôle le mois, calcule ses dépenses par catégorie et les fait commenter par l'agent synthèse.
 - `budget rules list` et `budget rules disable <id>` : audit de la mémoire.
 - `budget config verifier` : validation du fichier de contexte.
 
@@ -381,7 +382,7 @@ Le risque principal n'est pas technique : c'est l'abandon de l'outil s'il demand
 | 6 | Questions dans le terminal et règles apprises | Fait, simplifié au recadrage |
 | 7 | Agent catégoriseur, validation en lot, règles marchand, export CSV | Fait |
 | R | Recadrage : élagage du code, nouvelles catégories, base neuve, nouveau test sur juin et juillet | Fait |
-| 8 | Dépenses par catégorie, budgets et agent synthèse | Spec réécrite |
+| 8 | Dépenses par catégorie, budgets et agent synthèse | Fait |
 | 9 | Publication Google Sheets : Synthèse et onglets mensuels | Spec réécrite |
 | 10 | `budget run`, run réel, puis import de l'historique | Spec réécrite |
 

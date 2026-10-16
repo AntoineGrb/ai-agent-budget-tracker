@@ -5,5 +5,10 @@ version: 2
 seuils:
   amazon_auto: 50  # RG-13 : Amazon sous ce montant va en Achats › Autre, sans question
 
+budgets:                  # facultatif : budget mensuel par vue et par catégorie
+  joint: {courses: 600, restos: 150}
+  perso: {restos: 200}
+
 llm:
   modele_categorisation: "anthropic:claude-haiku-4-5"
+  modele_synthese: "anthropic:claude-sonnet-5-5"   # défaut si absent

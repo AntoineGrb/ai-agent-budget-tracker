@@ -14,7 +14,9 @@ from rich.table import Table
 
 from budget import __version__
 from budget.agents.categoriseur import Categoriseur, CategoriseurIndisponible, CategoriseurLLM
-from budget.categories import Categorie
+from budget.agents.synthese import Commentateur, CommentateurIndisponible, CommentateurLLM
+from budget.agregats import Vue
+from budget.categories import Categorie, libelle_complet
 from budget.config import Contexte, charger_contexte
 from budget.environnement import charger_env
 from budget.errors import BudgetError, ConfigError
@@ -27,6 +29,7 @@ from budget.questions.execution import RapportClassement, classer_et_questionner
 from budget.regles import TypeRegle
 from budget.restitution.export_csv import exporter_mois
 from budget.restitution.operations import depenses_par_categorie
+from budget.restitution.synthese import Synthese, produire_synthese
 
 app = typer.Typer(help="Budget Tracker agentique : suivi mensuel des dépenses du foyer.")
 config_app = typer.Typer(help="Fichier de contexte du foyer.")
@@ -77,7 +80,10 @@ def verifier(
 
     tableau = Table(title=f"Contexte valide : {chemin}", show_header=False)
     tableau.add_row("Seuil Amazon (RG-13)", formater_montant(contexte.seuils.amazon_auto))
+    for compte in Compte:
+        tableau.add_row(f"Budgets {compte.value}", str(len(contexte.budgets.de(compte))))
     tableau.add_row("Modèle de catégorisation", contexte.llm.modele_categorisation)
+    tableau.add_row("Modèle de synthèse", contexte.llm.modele_synthese)
     console.print(tableau)
 
 
@@ -158,14 +164,25 @@ def classifier(
     _afficher_bilan(rapport, interactif)
 
 
-def _categoriseur(contexte: Contexte, sans_llm: bool) -> Categoriseur:
+def _raison_sans_llm(modele: str, sans_llm: bool, agent: str) -> str | None:
     """Mode dégradé sans erreur : `--sans-llm` ou clé API absente."""
     if sans_llm:
-        return CategoriseurIndisponible("catégoriseur désactivé par --sans-llm")
-    modele = contexte.llm.modele_categorisation
+        return f"{agent} désactivé par --sans-llm"
     if modele.startswith("anthropic:") and not os.environ.get("ANTHROPIC_API_KEY"):
-        return CategoriseurIndisponible("ANTHROPIC_API_KEY absente de l'environnement et de .env")
-    return CategoriseurLLM(modele)
+        return "ANTHROPIC_API_KEY absente de l'environnement et de .env"
+    return None
+
+
+def _categoriseur(contexte: Contexte, sans_llm: bool) -> Categoriseur:
+    modele = contexte.llm.modele_categorisation
+    raison = _raison_sans_llm(modele, sans_llm, "catégoriseur")
+    return CategoriseurIndisponible(raison) if raison else CategoriseurLLM(modele)
+
+
+def _commentateur(contexte: Contexte, sans_llm: bool) -> Commentateur:
+    modele = contexte.llm.modele_synthese
+    raison = _raison_sans_llm(modele, sans_llm, "agent synthèse")
+    return CommentateurIndisponible(raison) if raison else CommentateurLLM(modele)
 
 
 def _afficher_depenses(rapport: RapportClassement) -> None:
@@ -240,6 +257,114 @@ def _afficher_bilan(rapport: RapportClassement, interactif: bool) -> None:
         )
     else:
         console.print("[green]Rien en attente[/]")
+
+
+@app.command("synthese")
+def synthetiser(
+    mois: Annotated[
+        str, typer.Option("--mois", callback=_valider_mois, help="Mois à synthétiser (AAAA-MM).")
+    ],
+    base: Annotated[Path, typer.Option("--base", help="Base SQLite du ledger.")] = Path(
+        "data/budget.sqlite"
+    ),
+    contexte: Annotated[
+        Path, typer.Option("--contexte", help="Fichier de contexte du foyer.")
+    ] = Path("data/contexte.yaml"),
+    sans_llm: Annotated[
+        bool, typer.Option("--sans-llm", help="N'appelle pas l'agent synthèse.")
+    ] = False,
+    regenerer: Annotated[
+        bool, typer.Option("--regenerer", help="Redemande un commentaire même inchangé.")
+    ] = False,
+) -> None:
+    """Chiffres du mois par catégorie, contrôlés, puis commentés par l'agent synthèse."""
+    try:
+        reference = charger_contexte(contexte)
+        commentateur = _commentateur(reference, sans_llm)
+        with Ledger(base) as ledger:
+            synthese = produire_synthese(mois, ledger, reference, commentateur, regenerer=regenerer)
+    except BudgetError as erreur:
+        console_erreur.print(str(erreur), style="bold red", markup=False, highlight=False)
+        raise typer.Exit(code=1) from None
+    _afficher_synthese(synthese)
+
+
+def _ecart(montant: Decimal | None) -> str:
+    if montant is None:
+        return ""
+    return ("+" if montant > 0 else "") + formater_montant(montant)
+
+
+def _optionnel(montant: Decimal | None) -> str:
+    return formater_montant(montant) if montant is not None else ""
+
+
+def _afficher_vue(vue: Vue, mois: str) -> None:
+    moyenne = vue.categories[0].mois_moyenne if vue.categories else 0
+    tableau = Table(
+        title=f"Vue {vue.compte.value} {mois} : {formater_montant(vue.total)} sur "
+        f"{vue.nb_operations} opération(s)",
+        caption=f"Moyenne sur {moyenne} mois classé(s) et complet(s) parmi les 3 précédents",
+    )
+    colonnes = ("Catégorie", "Montant", "Budget", "Écart budget", "Moyenne 3 mois", "Écart moyenne")
+    for colonne in colonnes:
+        tableau.add_column(colonne, justify="left" if colonne == "Catégorie" else "right")
+    for ligne in vue.categories:
+        tableau.add_row(
+            ligne.categorie.libelle,
+            formater_montant(ligne.montant),
+            _optionnel(ligne.budget),
+            _ecart(ligne.ecart_budget),
+            _optionnel(ligne.moyenne_3_mois),
+            _ecart(ligne.ecart_moyenne),
+        )
+    tableau.add_section()
+    tableau.add_row("Total", formater_montant(vue.total), "", "", "", "")
+    console.print(tableau)
+    console.print(
+        f"Non comptées : {vue.non_comptees.nombre} opération(s), "
+        f"{formater_montant(vue.non_comptees.montant)}"
+    )
+    grosses = Table(title=f"Plus grosses dépenses, vue {vue.compte.value}")
+    for colonne in ("Date", "Montant", "Sous-catégorie", "Marchand"):
+        grosses.add_column(colonne, justify="right" if colonne == "Montant" else "left")
+    for depense in vue.plus_grosses:
+        grosses.add_row(
+            f"{depense.date_operation:%d/%m/%Y}",
+            formater_montant(depense.montant),
+            libelle_complet(depense.sous_categorie),
+            depense.marchand or "",
+        )
+    console.print(grosses)
+
+
+def _afficher_synthese(synthese: Synthese) -> None:
+    agregats = synthese.agregats
+    for vue in (agregats.joint, agregats.perso):
+        _afficher_vue(vue, agregats.mois)
+    historique = Table(title="Historique sur 12 mois")
+    for colonne in ("Mois", "Joint", "Perso", "Complet"):
+        historique.add_column(colonne, justify="left" if colonne == "Mois" else "right")
+    for point in agregats.historique:
+        historique.add_row(
+            point.mois,
+            formater_montant(point.joint),
+            formater_montant(point.perso),
+            "oui" if point.complet else "non",
+        )
+    console.print(historique)
+    commentaire = synthese.commentaire
+    if commentaire is None:
+        console.print(
+            f"[yellow]Synthèse enregistrée sans commentaire : {synthese.avertissement}[/]",
+            highlight=False,
+        )
+        return
+    origine = " (réutilisé, chiffres inchangés)" if synthese.reutilise else ""
+    console.print(f"[bold]Commentaire{origine}[/]")
+    console.print(commentaire.resume, markup=False, highlight=False)
+    for point_cle in commentaire.points_cles:
+        console.print(f"  - {point_cle}", markup=False, highlight=False)
 
 
 @rules_app.command("list")

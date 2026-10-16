@@ -13,12 +13,17 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner, Result
 
+from budget import cli
 from budget.agents.categoriseur import CategoriseurLLM
-from budget.categories import SousCategorie
+from budget.agents.synthese import CommentateurIndisponible
+from budget.agregats import Vue
+from budget.categories import Categorie, SousCategorie, libelle_complet
 from budget.classement import Classement, OrigineClassement
 from budget.classement.cartes import est_paiement_carte
 from budget.config import Contexte, charger_contexte
+from budget.errors import ControleError
 from budget.importation import importer_mois
 from budget.ledger import Ledger
 from budget.libelles import cle_marchand
@@ -28,6 +33,7 @@ from budget.questions.execution import RapportClassement, classer_et_questionner
 from budget.regles import TypeRegle
 from budget.restitution.export_csv import exporter_mois
 from budget.restitution.operations import depenses_par_categorie
+from budget.restitution.synthese import Synthese, produire_synthese
 from tests.conftest import DOSSIER_FIXTURES, EXEMPLE_CONTEXTE
 from tests.scenarios.reference import AppelsCategoriseur, derouler, modele_propositions
 
@@ -258,3 +264,169 @@ def test_export_csv(parcours: Parcours, tmp_path: Path) -> None:
     assert Counter(ligne[7] for ligne in lignes[1:]) == {"oui": 120, "non": 17}
     differe = next(ligne for ligne in lignes[1:] if ligne[4] == "-3116,50")
     assert (differe[2], differe[7], differe[8]) == ("Joint", "non", "RG-03")
+
+
+def _synthese(parcours: Parcours, mois: str) -> Synthese:
+    sans_llm = CommentateurIndisponible("agent synthèse désactivé par --sans-llm")
+    return produire_synthese(mois, parcours.ledger, parcours.contexte, sans_llm)
+
+
+def _grosses(vue: Vue) -> list[tuple[str, str, str, str | None]]:
+    return [
+        (f"{g.date_operation:%d/%m}", f"{g.montant}", libelle_complet(g.sous_categorie), g.marchand)
+        for g in vue.plus_grosses
+    ]
+
+
+def test_synthese_de_juin(parcours: Parcours) -> None:
+    synthese = _synthese(parcours, "2026-06")
+    assert (synthese.commentaire, synthese.reutilise) == (None, False)
+    assert synthese.avertissement == "agent synthèse désactivé par --sans-llm"
+    joint, perso = synthese.agregats.joint, synthese.agregats.perso
+    for vue in (joint, perso):
+        lignes = {(ligne.categorie.value, vue.compte.value): ligne for ligne in vue.categories}
+        attendu = {cle: m for cle, m in DEPENSES["2026-06"].items() if cle[1] == vue.compte.value}
+        assert {cle: f"{ligne.montant}" for cle, ligne in lignes.items()} == attendu
+        # Aucun mois classé avant juin
+        assert all(ligne.moyenne_3_mois is None for ligne in vue.categories)
+        assert all(ligne.mois_moyenne == 0 for ligne in vue.categories)
+    assert (f"{joint.total}", joint.nb_operations) == ("7566.46", 61)
+    assert (f"{perso.total}", perso.nb_operations) == ("1322.86", 59)
+    assert max(joint.categories, key=lambda c: c.montant).categorie is Categorie.LOGEMENT
+    assert max(perso.categories, key=lambda c: c.montant).categorie is Categorie.LOISIRS
+    budgets = [
+        (vue.compte.value, ligne.categorie.value, f"{ligne.budget}", f"{ligne.ecart_budget}")
+        for vue in (joint, perso)
+        for ligne in vue.categories
+        if ligne.budget is not None
+    ]
+    assert budgets == [
+        ("joint", "courses", "600.00", "27.36"),
+        ("joint", "restos", "150.00", "-52.64"),
+        ("perso", "restos", "200.00", "6.05"),
+    ]
+    assert (joint.non_comptees.nombre, f"{joint.non_comptees.montant}") == (10, "6088.17")
+    assert (perso.non_comptees.nombre, f"{perso.non_comptees.montant}") == (7, "61.50")
+    assert _grosses(joint) == [
+        ("05/06", "1787.46", "Logement › Prêt", None),
+        ("24/06", "1071.04", "Logement › Charges & assurances", None),
+        ("01/06", "883.16", "Achats › Maison", "OLIVERSTORE VILLENEUVE-D'"),
+        ("02/06", "668.24", "Enfants › Garde/scolaire", None),
+        ("01/06", "393.08", "Achats › Tech", "SUNNY INCH ST JEAN DE VEDAS"),
+    ]
+    assert _grosses(perso) == [
+        ("08/06", "409.97", "Loisirs › Sport", "DECATHLON"),
+        ("03/06", "90.80", "Transport › Transports en commun", None),  # prélèvement
+        ("22/06", "89.99", "Loisirs › Autre", "GOOGLE*GOOGLE PLAY APP"),
+        ("02/06", "77.90", "Santé › Autre", "LUNETTESPRTOUS"),
+        ("12/06", "62.40", "Loisirs › Sorties", "KINEPOLIS MEGA"),
+    ]
+    # Juillet est importé, mais l'historique de juin s'arrête à juin (M−11 à M)
+    historique = synthese.agregats.historique
+    assert [(p.mois, f"{p.joint}", f"{p.perso}", p.complet) for p in historique] == [
+        ("2026-06", "7566.46", "1322.86", True)
+    ]
+
+
+def test_repartition_des_non_comptees_de_juin_rg10(parcours: Parcours) -> None:
+    juin = parcours.juin
+    nombres: Counter[str] = Counter()
+    montants: Counter[str] = Counter()
+    for c in juin.rapport.resultat.classements:
+        if not c.non_comptee:
+            continue
+        t = juin.par_id[c.transaction_id]
+        if c.detail in ("RG-03", "RG-11"):
+            nature = c.detail
+        elif est_paiement_carte(t):
+            nature = cle_marchand(t.libelle_normalise)
+        else:
+            nature = "virements"
+        nombres[nature] += 1
+        montants[nature] += int(-t.montant * 100)
+    assert nombres == {"RG-03": 2, "virements": 7, "BOURSORAMA BOULOGNE BILLA": 1, "RG-11": 7}
+    assert montants == {
+        "RG-03": 352717,
+        "virements": 255000,
+        "BOURSORAMA BOULOGNE BILLA": 1100,
+        "RG-11": 6150,
+    }
+
+
+def test_synthese_de_juillet(parcours: Parcours) -> None:
+    agregats = _synthese(parcours, "2026-07").agregats
+    joint, perso = agregats.joint, agregats.perso
+    assert (f"{joint.total}", joint.nb_operations) == ("9404.27", 102)
+    assert (f"{perso.total}", perso.nb_operations) == ("1154.49", 53)
+    lignes = {
+        (ligne.categorie.value, vue.compte.value): ligne
+        for vue in (joint, perso)
+        for ligne in vue.categories
+    }
+    assert {cle: f"{ligne.montant}" for cle, ligne in lignes.items()} == DEPENSES["2026-07"]
+    assert {ligne.mois_moyenne for ligne in lignes.values()} == {1}  # juin seul
+
+    def moyenne(cle: tuple[str, str]) -> tuple[str, str, str]:
+        ligne = lignes[cle]
+        return f"{ligne.moyenne_3_mois}", f"{ligne.montant}", f"{ligne.ecart_moyenne}"
+
+    assert moyenne(("courses", "joint")) == ("627.36", "757.92", "130.56")
+    assert moyenne(("logement", "joint")) == ("3289.26", "4416.17", "1126.91")
+    assert moyenne(("divers", "joint")) == ("0.00", "618.45", "618.45")  # catégorie nouvelle
+    ecarts = {cle: f"{ligne.ecart_budget}" for cle, ligne in lignes.items() if ligne.budget}
+    assert ecarts == {
+        ("courses", "joint"): "157.92",
+        ("restos", "joint"): "295.58",
+        ("restos", "perso"): "62.17",
+    }
+    assert _grosses(joint)[0] == ("20/07", "2659.16", "Logement › Autre", None)  # virement
+    assert [p.mois for p in agregats.historique] == ["2026-06", "2026-07"]
+
+
+def _sortie(resultat: Result) -> str:
+    """Sortie de la CLI, blancs réduits : les retours à la ligne de Rich n'y comptent plus."""
+    return " ".join(resultat.output.split())
+
+
+def test_commande_synthese_sans_llm(parcours: Parcours, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli.console, "width", 200)
+    arguments = ["--base", str(parcours.ledger.chemin), "--contexte", str(EXEMPLE_CONTEXTE)]
+    resultat = CliRunner().invoke(
+        cli.app, ["synthese", "--mois", "2026-07", *arguments, "--sans-llm"]
+    )
+    assert resultat.exit_code == 0, resultat.output
+    sortie = _sortie(resultat)
+    for attendu in (
+        "Vue joint 2026-07 : 9 404,27 € sur 102 opération(s)",
+        "Vue perso 2026-07 : 1 154,49 € sur 53 opération(s)",
+        "Courses │ 757,92 € │ 600,00 € │ +157,92 € │ 627,36 € │ +130,56 €",
+        "Non comptées : 6 opération(s), 6 598,38 €",
+        "20/07/2026 │ 2 659,16 € │ Logement › Autre",
+        "2026-06 │ 7 566,46 € │ 1 322,86 € │ oui",
+        "Synthèse enregistrée sans commentaire : agent synthèse désactivé par --sans-llm",
+    ):
+        assert attendu in sortie, attendu
+
+
+def test_synthese_refusee_si_operations_en_attente(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Juin importé sans aucune réponse : 137 suivies, 11 classées par les règles fixes."""
+    contexte = charger_contexte(EXEMPLE_CONTEXTE)
+    chemin = tmp_path / "budget.sqlite"
+    with Ledger(chemin) as ledger:
+        importer_mois("2026-06", DOSSIER_FIXTURES, ledger, date(2026, 10, 15))
+        with pytest.raises(ControleError) as erreur:
+            produire_synthese("2026-06", ledger, contexte, CommentateurIndisponible("--sans-llm"))
+        assert ledger.synthese("2026-06") is None
+        libelles = [t.libelle for t in ledger.transactions("2026-06")]
+    message = str(erreur.value)
+    assert "126 opération(s) en attente" in message
+    assert "`budget classify --mois 2026-06`" in message
+    assert not any(libelle in message for libelle in libelles)
+
+    monkeypatch.setattr(cli.console_erreur, "width", 200)
+    arguments = ["--base", str(chemin), "--contexte", str(EXEMPLE_CONTEXTE), "--sans-llm"]
+    resultat = CliRunner().invoke(cli.app, ["synthese", "--mois", "2026-06", *arguments])
+    assert resultat.exit_code == 1
+    assert "126 opération(s) en attente" in _sortie(resultat)

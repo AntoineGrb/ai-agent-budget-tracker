@@ -127,6 +127,21 @@ CREATE TABLE propositions (
 CREATE INDEX propositions_cle ON propositions (source, cle_marchand);
 """,
     ),
+    Migration(
+        numero=2,
+        description="synthèses mensuelles : agrégats et commentaire de l'agent (étape 8)",
+        sql="""
+CREATE TABLE syntheses (
+    mois          TEXT PRIMARY KEY,
+    empreinte     TEXT NOT NULL,     -- sha256 : entrée de l'agent, modèle, version des consignes
+    agregats      TEXT NOT NULL,     -- JSON des Agregats, montants en chaînes décimales
+    commentaire   TEXT,              -- JSON du CommentaireSynthese ; NULL sans LLM ou après échec
+    modele        TEXT,
+    calculee_le   TEXT NOT NULL,
+    commentee_le  TEXT
+);
+""",
+    ),
 )
 
 VERSION_COURANTE = MIGRATIONS[-1].numero

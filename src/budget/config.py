@@ -2,14 +2,16 @@
 
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, ValidationError
 from pydantic_core import ErrorDetails
 
+from budget.categories import Categorie
 from budget.errors import ConfigError
-from budget.montants import Montant
+from budget.models import Compte
+from budget.montants import CENTIME, Montant
 
 
 class _Modele(BaseModel):
@@ -20,13 +22,30 @@ class Seuils(_Modele):
     amazon_auto: Montant  # RG-13
 
 
+MontantBudget = Annotated[
+    Montant, Field(ge=0, decimal_places=2), AfterValidator(lambda m: m.quantize(CENTIME))
+]
+
+
+class Budgets(_Modele):
+    """Budget mensuel facultatif, par vue et par catégorie (spec 08)."""
+
+    joint: dict[Categorie, MontantBudget] = {}
+    perso: dict[Categorie, MontantBudget] = {}
+
+    def de(self, compte: Compte) -> dict[Categorie, Decimal]:
+        return self.joint if compte is Compte.JOINT else self.perso
+
+
 class Llm(_Modele):
     modele_categorisation: str = "anthropic:claude-haiku-4-5"
+    modele_synthese: str = "anthropic:claude-sonnet-5-5"
 
 
 class Contexte(_Modele):
     version: Literal[2]
     seuils: Seuils
+    budgets: Budgets = Budgets()
     llm: Llm = Llm()
 
 
@@ -102,7 +121,7 @@ def _decrire(detail: ErrorDetails) -> str:
         message = "clé inconnue"
     elif type_erreur == "missing":
         message = "clé obligatoire absente"
-    elif type_erreur == "literal_error":
+    elif type_erreur in ("literal_error", "enum"):
         message = f"valeur {valeur!r} invalide, attendu : {ctx.get('expected')}"
     elif type_erreur in ("greater_than_equal", "less_than_equal"):
         borne = ctx.get("ge", ctx.get("le"))

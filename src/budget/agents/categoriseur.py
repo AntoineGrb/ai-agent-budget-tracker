@@ -123,7 +123,7 @@ class CategoriseurIndisponible:
         raise CategorisationError(self.raison)
 
 
-def raison_echec(erreur: Exception) -> str:
+def raison_echec(erreur: Exception, agent: str = "catégoriseur") -> str:
     """Cause d'un échec pour le terminal : statut HTTP et message du fournisseur, sans le prompt."""
     raison = type(erreur).__name__
     if isinstance(erreur, ModelHTTPError):
@@ -134,7 +134,7 @@ def raison_echec(erreur: Exception) -> str:
         if erreur.suggested_model_id is not None:
             details.append(f"modèle suggéré : {erreur.suggested_model_id}")
         raison += " : " + ", ".join(d for d in details if d)
-    return f"catégoriseur en échec ({raison})"
+    return f"{agent} en échec ({raison})"
 
 
 def verifier_groupes(groupes: Sequence[GroupeMarchand]) -> None:

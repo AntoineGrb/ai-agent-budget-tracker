@@ -76,3 +76,10 @@ def mois_budgetaire(d: date) -> str:
 def dernier_jour_du_mois(annee: int, mois: int) -> date:
     """Renvoie la date du dernier jour du mois donné."""
     return date(annee, mois, calendar.monthrange(annee, mois)[1])
+
+
+def decaler_mois(mois: str, decalage: int) -> str:
+    """`AAAA-MM` décalé de `decalage` mois : `decaler_mois("2026-01", -1)` → `"2025-12"`."""
+    annee, numero = (int(partie) for partie in mois.split("-"))
+    rang = annee * 12 + numero - 1 + decalage
+    return f"{rang // 12:04d}-{rang % 12 + 1:02d}"

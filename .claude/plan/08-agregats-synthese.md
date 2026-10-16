@@ -239,18 +239,18 @@ Aucune nouvelle dépendance.
 
 ## Critères d'acceptation
 
-- [ ] Valeurs de juin et de juillet des tableaux ci-dessus, vérifiées par des tests golden (ajoutés à `tests/test_bout_en_bout.py` ou dans `tests/test_agregats.py`).
-- [ ] Avoir carte déduit de sa catégorie (RG-09), non comptées exclues (RG-10), crédits absents (RG-19) : un cas synthétique chacun.
-- [ ] Moyenne sur 3 mois : 0, 1 et 3 mois disponibles, mois en attente exclu, catégorie absente d'un mois comptée pour 0, arrondi au centime.
-- [ ] Budgets : catégorie avec et sans budget, budget sans dépense (montant 0,00 €), catégorie inconnue dans `contexte.yaml` refusée.
-- [ ] Contrôles bloquants : chacun des trois produit une `ControleError` qui cite les manquements, sans libellé.
-- [ ] Agent synthèse : un `FunctionModel` qui cite un montant absent provoque une relance ; après épuisement des relances, synthèse enregistrée sans commentaire et avec un avertissement.
-- [ ] Confidentialité : aucun libellé de virement ou de prélèvement et aucun IBAN dans le prompt (test sur les messages capturés, sur juin des fixtures).
-- [ ] Empreinte : deux `budget synthese` successifs ne font qu'un appel ; `--regenerer` en force un second ; une nouvelle réponse qui change un total en provoque un.
-- [ ] `budget synthese` : code 1 si un contrôle échoue ; affichage complet sinon ; `--sans-llm` sans appel.
-- [ ] Migration n° 2 appliquée sur une base en version 1, sans perte.
-- [ ] Aucun `float` dans les agrégats ni dans le JSON envoyé (test récursif sur les types).
-- [ ] Vérification complète (ruff, format, mypy, pytest) au vert.
+- [x] Valeurs de juin et de juillet des tableaux ci-dessus, vérifiées par des tests golden (ajoutés à `tests/test_bout_en_bout.py` ou dans `tests/test_agregats.py`).
+- [x] Avoir carte déduit de sa catégorie (RG-09), non comptées exclues (RG-10), crédits absents (RG-19) : un cas synthétique chacun.
+- [x] Moyenne sur 3 mois : 0, 1 et 3 mois disponibles, mois en attente exclu, catégorie absente d'un mois comptée pour 0, arrondi au centime.
+- [x] Budgets : catégorie avec et sans budget, budget sans dépense (montant 0,00 €), catégorie inconnue dans `contexte.yaml` refusée.
+- [x] Contrôles bloquants : chacun des trois produit une `ControleError` qui cite les manquements, sans libellé.
+- [x] Agent synthèse : un `FunctionModel` qui cite un montant absent provoque une relance ; après épuisement des relances, synthèse enregistrée sans commentaire et avec un avertissement.
+- [x] Confidentialité : aucun libellé de virement ou de prélèvement et aucun IBAN dans le prompt (test sur les messages capturés, sur juin des fixtures).
+- [x] Empreinte : deux `budget synthese` successifs ne font qu'un appel ; `--regenerer` en force un second ; une nouvelle réponse qui change un total en provoque un.
+- [x] `budget synthese` : code 1 si un contrôle échoue ; affichage complet sinon ; `--sans-llm` sans appel.
+- [x] Migration n° 2 appliquée sur une base en version 1, sans perte.
+- [x] Aucun `float` dans les agrégats ni dans le JSON envoyé (test récursif sur les types).
+- [x] Vérification complète (ruff, format, mypy, pytest) au vert.
 
 ## Tests attendus
 
@@ -269,4 +269,24 @@ Rester sur le cœur du moteur : pas de test par fonction utilitaire.
 
 ## Écarts constatés
 
-À compléter pendant l'implémentation.
+**Valeurs attendues** : toutes retrouvées sur les fixtures, sans écart (totaux, budgets, moyennes, non comptées et leur répartition, plus grosses dépenses).
+
+**Contradiction tranchée**
+
+- Historique de juin : la ligne « Juin seul si juillet n'est pas importé ; juin puis juillet sinon » contredit la définition (mois importés de M−11 à M). La définition est appliquée : la synthèse de juin n'a que juin dans son historique, même si juillet est importé ; celle de juillet a juin puis juillet. À confirmer.
+
+**Précisions d'implémentation**
+
+- Plus grosses dépenses : seuls les débits sont retenus. Un avoir carte n'est pas une dépense, même s'il est élevé en valeur absolue.
+- Modèles : `Vue` porte aussi `compte` et une propriété `nb_operations` (les « 61 opérations » des tableaux). `non_comptees` est un `NonComptees(nombre, montant)`. Les sous-catégories sont des `MontantSousCategorie(sous_categorie, montant)` ; à montant égal, l'ordre de `SousCategorie` départage.
+- Une opération suivie sans classement en base compte comme en attente : le mois n'est alors ni complet (moyenne, historique) ni contrôlable (contrôle 2).
+- `controler_mois(mois, transactions_par_mois, classements_par_mois, agregats)` : le contrôle 3 porte sur les agrégats, qui sont donc calculés avant les contrôles. Si le mois n'est pas importé, seul le contrôle 1 est signalé. Cinq opérations au plus sont citées, puis « … et N autre(s) ».
+- L'orchestration de la CLI (reclassement, contrôles, agrégats, commentaire, enregistrement) est dans `restitution/synthese.py` (`produire_synthese`), absent de l'arborescence de la spec. Les tests l'appellent directement.
+- Agent : protocole `Commentateur`, implémentations `CommentateurLLM` et `CommentateurIndisponible` (mode dégradé), sur le modèle du catégoriseur. Nouvelle exception `SyntheseError`. `raison_echec` prend le nom de l'agent en paramètre (« agent synthèse en échec (…) »). La CLI partage la détection du mode dégradé entre les deux agents.
+- Empreinte : calculée avec le modèle configuré (`contexte.llm.modele_synthese`), y compris avec `--sans-llm`. Un commentaire déjà produit pour la même empreinte est donc réutilisé avec `--sans-llm`. La colonne `modele` est vide sans commentaire. `--regenerer --sans-llm` enregistre la synthèse sans commentaire.
+- Validateur : il reconnaît les montants suivis de `€`, avec ou sans signe (`-`, `+`, `−`) et avec des milliers séparés par une espace, normale, insécable ou fine. Il compare les valeurs absolues au centime. Une relance liste les montants inconnus dans leur forme d'origine.
+- Budgets : montant positif ou nul, deux décimales au plus, ramené au centime (`"600.00"` dans le JSON envoyé). Une catégorie inconnue produit « budgets.joint.voyages (clé) : valeur 'voyages' invalide, attendu : … » (message `enum` traduit dans `config._decrire`).
+- Migration n° 2 : le commentaire SQL de la colonne `empreinte` a été raccourci pour tenir dans les 100 caractères de ruff. Le schéma est celui de la spec.
+- Utilitaire `dates.decaler_mois(mois, decalage)` ajouté.
+- Le skill `pydantic-ai-v2` n'existe pas dans le dépôt (`.claude/skills/` absent). Les conventions ont été reprises du catégoriseur et de `pydantic-ai-slim` 2.56.0 installé.
+- Test « nouvelle réponse » : Spotifion a une décision, qui prime sur sa règle. Le test désactive donc la règle du prêt principal, puis classe le prêt de 121,89 € en Divers › Autre.

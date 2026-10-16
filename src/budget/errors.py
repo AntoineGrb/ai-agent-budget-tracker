@@ -66,3 +66,11 @@ class CategorisationError(BudgetError):
         super().__init__(raison)
         self.raison = raison
         self.partielles = partielles or {}
+
+
+class SyntheseError(BudgetError):
+    """Agent synthèse indisponible ou en échec : la synthèse est enregistrée sans commentaire."""
+
+    def __init__(self, raison: str) -> None:
+        super().__init__(raison)
+        self.raison = raison

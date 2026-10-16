@@ -14,9 +14,10 @@ from budget.categories import Imputation, SousCategorie
 from budget.classement.modeles import Classement, OrigineClassement, ResultatClassement
 from budget.errors import ControleError, LedgerError
 from budget.horloge import horodatage
-from budget.ledger import memoire
+from budget.ledger import memoire, syntheses
 from budget.ledger.memoire import PropositionEnregistree
 from budget.ledger.migrations import appliquer_migrations, version
+from budget.ledger.syntheses import SyntheseEnregistree
 from budget.models import Source, Transaction
 from budget.montants import depuis_centimes, en_centimes
 from budget.questions.modeles import Question
@@ -337,6 +338,14 @@ class Ledger:
         return self._en_transaction(
             lambda: memoire.enregistrer_reponse(self._connexion, question, decision, regle)
         )
+
+    # Synthèses --------------------------------------------------------------------------------
+
+    def synthese(self, mois: str) -> SyntheseEnregistree | None:
+        return syntheses.lire_synthese(self._connexion, mois)
+
+    def enregistrer_synthese(self, synthese: SyntheseEnregistree) -> None:
+        self._en_transaction(lambda: syntheses.enregistrer_synthese(self._connexion, synthese))
 
     # Lecture ----------------------------------------------------------------------------------
 
